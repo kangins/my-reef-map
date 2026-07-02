@@ -55,6 +55,17 @@
     font-size:20px; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.3);
   }
 
+  /* 지도 위 지우기 플로팅 버튼 */
+  #clearBtn {
+    position:absolute; top:130px; left:10px; z-index:1000;
+    width:36px; height:36px; border-radius:6px; font-size:18px;
+    background:#fff; border:2px solid rgba(0,0,0,0.2); cursor:pointer;
+    box-shadow:0 1px 5px rgba(0,0,0,0.3); display:none;
+    padding:0; line-height:32px; text-align:center;
+  }
+  #clearBtn:hover { background:#f0f0f0; }
+  #clearBtn.show { display:block; }
+
   /* 어초 정보 패널 */
   #info {
     position:absolute; bottom:80px; left:10px; z-index:1000;
@@ -127,7 +138,7 @@
   }
   @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.6;} }
 
-  /* 모달 (즐겨찾기/웨이포인트) */
+  /* 모달 */
   #modal {
     position:absolute; top:0; left:0; right:0; bottom:0; z-index:2000;
     background:rgba(0,0,0,0.6); display:none;
@@ -187,6 +198,7 @@
 
 <div id="map"></div>
 <button id="toggleBtn" onclick="togglePanel()">≡</button>
+<button id="clearBtn" onclick="clearRoute()" title="경로/직선 지우기">🚫</button>
 
 <div id="panel">
   <h3>🎣 어초 지도</h3>
@@ -259,13 +271,13 @@
   </div>
 </div>
 
-<button id="sos" onclick="sos()">SOS<br>122</button>
+<button id="sos" onclick="sos()">SOS<br>119</button>
 
 <script>
 /* ======================================================
    설정
 ====================================================== */
-const KHOA_KEY = '여기에_발급받은_공공데이터포털_서비스키';
+const KHOA_KEY = 'c282fed952f9ab142024c8e037b78de6fb22d5df62968e5907b2983482ecc830';
 const TIDE_API = 'https://apis.data.go.kr/1192000/TideObsPreTab/getTideObsPreTab';
 
 /* ======================================================
@@ -383,6 +395,7 @@ async function showReef(reef){
     html += `<button onclick="startNavigation('${nameEsc}','${reef.region}',${reef.lat},${reef.lon})" style="background:#e53935;">🎯 목표설정</button>`;
     html += `<button onclick="navigateTo(${reef.lat},${reef.lon})">🗺️ 경로</button>`;
     html += `<button onclick="drawStraightLine(${reef.lat},${reef.lon})">📏 직선</button>`;
+    html += `<button onclick="clearRoute()" style="background:#888;">🚫 지우기</button>`;
   } else {
     html += `<small>※ 좌측 ⊕ 버튼으로 현위치 잡아주세요</small><br>`;
   }
@@ -431,7 +444,7 @@ function haversine(la1,lo1,la2,lo2){
 function escapeStr(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
 /* ======================================================
-   6. 경로/직선 표시
+   6. 경로/직선 표시 + 지우기
 ====================================================== */
 let routeCtrl = null, straightLine = null;
 
@@ -444,6 +457,7 @@ function navigateTo(lat, lon){
     lineOptions:{ styles:[{color:'#ff3300', weight:5, opacity:0.8}] },
     show:true, addWaypoints:false, draggableWaypoints:false, fitSelectedRoutes:true
   }).addTo(map);
+  showClearBtn();
 }
 function drawStraightLine(lat, lon){
   if (!myPos){ alert('먼저 현위치를 잡아주세요'); return; }
@@ -453,14 +467,18 @@ function drawStraightLine(lat, lon){
   straightLine = L.polyline([myPos, [lat,lon]], { color:'#ff0066', weight:3, dashArray:'10,8' }).addTo(map);
   straightLine.bindTooltip(`${dist}km · ${b}°`, { permanent:true, direction:'center' }).openTooltip();
   map.fitBounds(straightLine.getBounds(), { padding:[50,50] });
+  showClearBtn();
 }
 function clearRoute(){
   if (routeCtrl){ map.removeControl(routeCtrl); routeCtrl = null; }
   if (straightLine){ map.removeLayer(straightLine); straightLine = null; }
+  hideClearBtn();
 }
+function showClearBtn(){ document.getElementById('clearBtn').classList.add('show'); }
+function hideClearBtn(){ document.getElementById('clearBtn').classList.remove('show'); }
 
 /* ======================================================
-   7. 실시간 항해 (Live Navigation)
+   7. 실시간 항해
 ====================================================== */
 let navTarget = null;
 let navLine = null;
@@ -468,7 +486,7 @@ let navMarker = null;
 let navWatchId = null;
 let navHistory = [];
 let alertLevels = new Set();
-let currentWaypointIndex = -1;  // 웨이포인트 순회 중일 때 사용
+let currentWaypointIndex = -1;
 
 function startNavigation(name, region, lat, lon, wpIndex){
   stopNavigation(true);
@@ -480,7 +498,6 @@ function startNavigation(name, region, lat, lon, wpIndex){
   document.getElementById('navRegion').textContent = `(${region})`;
   document.getElementById('nav').classList.add('show');
 
-  // 웨이포인트 순회 정보 표시
   const wpInfoEl = document.getElementById('wpInfo');
   if (currentWaypointIndex >= 0){
     const total = getWaypoints().length;
@@ -490,7 +507,6 @@ function startNavigation(name, region, lat, lon, wpIndex){
     wpInfoEl.style.display = 'none';
   }
 
-  // 목표 마커
   navMarker = L.circleMarker([lat, lon], {
     radius:14, color:'#ff3355', fillColor:'#ff3355', fillOpacity:0.4, weight:3
   }).addTo(map);
@@ -498,11 +514,7 @@ function startNavigation(name, region, lat, lon, wpIndex){
   if (!navigator.geolocation){
     alert('이 기기는 위치 서비스를 지원하지 않습니다'); return;
   }
-  navWatchId = navigator.geolocation.watchPosition(
-    onNavUpdate,
-    err => console.warn('위치 오류', err),
-    { enableHighAccuracy:true, timeout:10000, maximumAge:1000 }
-  );
+  ensureWatchPosition();
 
   document.getElementById('info').style.display = 'none';
 }
@@ -513,10 +525,7 @@ function onNavUpdate(position){
 
   myPos = L.latLng(lat, lon);
 
-  // 항적 기록
   if (tracking) recordTrackPoint(lat, lon, position.coords.altitude, now);
-
-  // 드리프트 감지 (동시 실행 가능)
   if (anchorPos) checkDrift(lat, lon);
 
   if (!navTarget) return;
@@ -567,15 +576,12 @@ function onNavUpdate(position){
 
   checkProximityAlert(distKm);
 
-  // 도착 판정
   const arrival = document.getElementById('navArrival');
   if (distKm * 1000 < 30){
     arrival.style.display = 'block';
     if (!alertLevels.has('arrived')){
       alertLevels.add('arrived');
       vibrate([200,100,200,100,400]);
-
-      // 웨이포인트 순회 중이면 다음 목표로 자동 전환
       if (currentWaypointIndex >= 0){
         setTimeout(() => advanceToNextWaypoint(), 2000);
       }
@@ -607,11 +613,6 @@ function vibrate(pattern){
 }
 
 function stopNavigation(silent){
-  if (navWatchId != null && !tracking && !anchorPos){
-    // 항적/정박 모드가 없을 때만 완전히 정지
-    navigator.geolocation.clearWatch(navWatchId);
-    navWatchId = null;
-  }
   if (navLine){ map.removeLayer(navLine); navLine = null; }
   if (navMarker){ map.removeLayer(navMarker); navMarker = null; }
   navTarget = null;
@@ -621,8 +622,6 @@ function stopNavigation(silent){
   document.getElementById('nav').classList.remove('show');
   document.getElementById('navArrival').style.display = 'none';
   document.getElementById('wpInfo').style.display = 'none';
-
-  // 다른 기능이 켜져있으면 watchPosition 계속 유지
   ensureWatchPosition();
 }
 
@@ -690,9 +689,10 @@ function removeFav(idx){
 function closeModal(){ document.getElementById('modal').classList.remove('show'); }
 
 /* ======================================================
-   9. 웨이포인트 순회 (Multi-Waypoint Route)
+   9. 웨이포인트 순회
 ====================================================== */
 let waypointLine = null;
+let waypointMarkers = [];
 
 function getWaypoints(){ return JSON.parse(localStorage.getItem('waypoints')||'[]'); }
 function setWaypoints(w){ localStorage.setItem('waypoints', JSON.stringify(w)); redrawWaypointLine(); }
@@ -777,13 +777,19 @@ function advanceToNextWaypoint(){
 }
 function redrawWaypointLine(){
   if (waypointLine){ map.removeLayer(waypointLine); waypointLine = null; }
+  waypointMarkers.forEach(m => map.removeLayer(m));
+  waypointMarkers = [];
+
   const wps = getWaypoints();
-  if (wps.length < 2) return;
-  const points = wps.map(w => [w.lat, w.lon]);
-  waypointLine = L.polyline(points, {
-    color:'#00aa66', weight:3, opacity:0.6, dashArray:'6,6'
-  }).addTo(map);
-  // 순서 번호 마커
+  if (wps.length < 1) return;
+
+  if (wps.length >= 2){
+    const points = wps.map(w => [w.lat, w.lon]);
+    waypointLine = L.polyline(points, {
+      color:'#00aa66', weight:3, opacity:0.6, dashArray:'6,6'
+    }).addTo(map);
+  }
+
   wps.forEach((w, idx) => {
     const numIcon = L.divIcon({
       html:`<div style="background:#00aa66;color:#fff;border-radius:50%;
@@ -792,15 +798,16 @@ function redrawWaypointLine(){
             font-size:12px;">${idx+1}</div>`,
       className:'', iconSize:[24,24]
     });
-    L.marker([w.lat, w.lon], { icon:numIcon, zIndexOffset:500 }).addTo(waypointLine._layers ? waypointLine : map);
+    const m = L.marker([w.lat, w.lon], { icon:numIcon, zIndexOffset:500 }).addTo(map);
+    waypointMarkers.push(m);
   });
 }
 
 /* ======================================================
-   10. 항적 기록 (Track Recording)
+   10. 항적 기록
 ====================================================== */
 let tracking = false;
-let currentTrack = [];  // { lat, lon, ele, time }
+let currentTrack = [];
 let trackLine = null;
 
 function toggleTracking(){
@@ -820,19 +827,18 @@ function toggleTracking(){
         saveTrack();
       }
     }
+    ensureWatchPosition();
   }
 }
 
 function recordTrackPoint(lat, lon, ele, time){
   const last = currentTrack[currentTrack.length-1];
-  // 5m 이상 이동했을 때만 기록 (노이즈 필터)
   if (last){
     const d = map.distance([last.lat,last.lon], [lat,lon]);
     if (d < 5) return;
   }
   currentTrack.push({ lat, lon, ele:ele||0, time });
 
-  // 실시간 궤적 그리기
   if (!trackLine){
     trackLine = L.polyline([[lat,lon]], { color:'#00cc00', weight:4, opacity:0.8 }).addTo(map);
   } else {
@@ -932,17 +938,16 @@ function exportTrackGPX(idx){
 }
 
 /* ======================================================
-   11. 드리프트 감지 (Anchor Watch)
+   11. 드리프트 감지
 ====================================================== */
 let anchorPos = null;
 let anchorMarker = null;
 let anchorCircle = null;
-let driftLimit = 50;  // 미터
+let driftLimit = 50;
 
 function toggleAnchorMode(){
   const btn = document.getElementById('anchorBtn');
   if (anchorPos){
-    // 정지
     anchorPos = null;
     if (anchorMarker){ map.removeLayer(anchorMarker); anchorMarker = null; }
     if (anchorCircle){ map.removeLayer(anchorCircle); anchorCircle = null; }
@@ -950,10 +955,7 @@ function toggleAnchorMode(){
     btn.classList.remove('active');
     btn.textContent = '⚓ 정박모드';
     alert('⚓ 정박 모드 해제');
-    if (!tracking && !navTarget && navWatchId != null){
-      navigator.geolocation.clearWatch(navWatchId);
-      navWatchId = null;
-    }
+    ensureWatchPosition();
   } else {
     if (!myPos){ alert('먼저 현위치를 잡아주세요'); return; }
     const limitStr = prompt('드리프트 경고 반경 (미터):\n(예: 30, 50, 100)', '50');
@@ -995,7 +997,7 @@ function checkDrift(lat, lon){
 }
 
 /* ======================================================
-   12. 해상 안전 원 (Safety Circle)
+   12. 해상 안전 원
 ====================================================== */
 let safetyCircles = [];
 
@@ -1005,7 +1007,6 @@ document.getElementById('safetyRadius').onchange = e => {
   safetyCircles = [];
   if (!r) return;
 
-  // 현재 화면에 보이는 어초에만 원 표시 (성능)
   const bounds = map.getBounds();
   allReefs.forEach(reef => {
     if (bounds.contains([reef.lat, reef.lon])){
@@ -1019,7 +1020,6 @@ document.getElementById('safetyRadius').onchange = e => {
   alert(`⭕ 안전원 표시: ${safetyCircles.length}개 어초 (반경 ${r}m)`);
 };
 
-// 지도 이동 시 원 갱신
 map.on('moveend', () => {
   const sel = document.getElementById('safetyRadius');
   const r = parseInt(sel.value);
@@ -1043,7 +1043,6 @@ map.on('moveend', () => {
    13. GPS watchPosition 통합 관리
 ====================================================== */
 function ensureWatchPosition(){
-  // 항해/항적/정박 중 하나라도 활성이면 위치 추적 계속
   const needsWatch = navTarget || tracking || anchorPos;
   if (needsWatch && navWatchId == null){
     navWatchId = navigator.geolocation.watchPosition(
@@ -1174,8 +1173,8 @@ async function showTideFor(lat, lon){
 function sos(){
   const coord = myPos ? `${myPos.lat.toFixed(5)}, ${myPos.lng.toFixed(5)}` : '위치 확인 불가';
   navigator.clipboard?.writeText(coord);
-  if (confirm(`🚨 해양경찰(122)에 전화하시겠습니까?\n현재좌표: ${coord}\n(좌표가 클립보드에 복사되었습니다)`)){
-    location.href = 'tel:122';
+  if (confirm(`🚨 해양경찰(119)에 전화하시겠습니까?\n현재좌표: ${coord}\n(좌표가 클립보드에 복사되었습니다)`)){
+    location.href = 'tel:119';
   }
 }
 
@@ -1229,7 +1228,7 @@ async function precacheCurrentView(maxZoom = 14){
 }
 
 /* ======================================================
-   20. 시작 (오류 진단 포함)
+   20. 시작
 ====================================================== */
 loadAllReefs().then(() => {
   redrawWaypointLine();
