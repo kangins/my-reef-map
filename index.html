@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🎣 전국 어초 지도</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#003366">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.css"/>
+<script src="https://unpkg.com/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.js"></script>
+
+<style>
+  html, body { margin:0; height:100%; font-family:-apple-system,"Apple SD Gothic Neo",sans-serif; overflow:hidden; }
+  #map { width:100%; height:100%; }
+
+  #panel {
+    position:absolute; top:10px; right:10px; z-index:1000;
+    background:rgba(255,255,255,0.95); padding:12px; border-radius:10px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.2); max-width:270px; font-size:13px;
+    max-height:calc(100vh - 30px); overflow-y:auto;
+  }
+  #panel h3 { margin:0 0 8px; font-size:14px; }
+  #panel label { display:block; margin:4px 0; cursor:pointer; }
+  #panel hr { border:none; border-top:1px solid #ddd; margin:8px 0; }
+  #panel button { padding:5px 8px; margin:2px 2px 2px 0; border:1px solid #ccc;
+                  background:#f7f7f7; border-radius:5px; cursor:pointer; font-size:12px; }
+  #panel button:hover { background:#e7e7e7; }
+  #search { width:100%; padding:6px; margin-bottom:6px; border:1px solid #ccc; border-radius:5px; box-sizing:border-box; }
+  #toggleBtn {
+    position:absolute; top:10px; right:10px; z-index:1001; display:none;
+    background:#fff; border:1px solid #888; border-radius:50%; width:42px; height:42px;
+    font-size:20px; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.3);
+  }
+
+  #info {
+    position:absolute; bottom:80px; left:10px; z-index:1000;
+    background:rgba(0,40,80,0.92); color:#fff; padding:12px 14px;
+    border-radius:10px; font-size:13px; display:none; max-width:330px; line-height:1.5;
+    box-shadow:0 2px 10px rgba(0,0,0,0.4);
+  }
+  #info button {
+    background:#ff9500; color:#fff; border:none; padding:6px 10px;
+    border-radius:5px; cursor:pointer; margin:4px 4px 0 0; font-size:12px;
+  }
+  #info button.close { background:#666; float:right; padding:2px 8px; }
+  #info b { color:#ffe066; }
+  #info hr { border:none; border-top:1px solid rgba(255,255,255,0.3); margin:8px 0; }
+
+  #sos {
+    position:absolute; bottom:10px; right:10px; z-index:1000;
+    background:#e53935; color:#fff; border:none; width:64px; height:64px;
+    border-radius:50%; font-weight:bold; font-size:13px; cursor:pointer;
+    box-shadow:0 3px 10px rgba(0,0,0,0.4);
+  }
+
+  /* 야간 모드 */
+  body.night #map { filter: invert(0.9) hue-rotate(180deg) brightness(0.95) saturate(0.7); }
+  body.night #panel { background:rgba(40,0,0,0.92); color:#ffaaaa; }
+  body.night #panel button { background:#400; color:#fcc; border-color:#600; }
+
+  @media (max-width:600px) {
+    #panel { max-width:220px; font-size:12px; padding:10px; }
+    #toggleBtn { display:block; }
+    #panel.hidden { display:none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+<button id="toggleBtn" onclick="togglePanel()">≡</button>
+
+<div id="panel">
+  <h3>🎣 어초 지도</h3>
+  <input id="search" placeholder="어초명 검색...">
+  <div id="layerList"><em>로딩 중...</em></div>
+  <hr>
+  <label><input type="checkbox" id="seamap"> 🌊 해도(OpenSeaMap)</label>
+  <label><input type="checkbox" id="night"> 🌙 야간모드</label>
+  <label>반경 검색:
+    <select id="radius">
+      <option value="0">끄기</option>
+      <option value="1">1km</option><option value="3">3km</option>
+      <option value="5">5km</option><option value="10">10km</option>
+    </select>
+  </label>
+  <hr>
+  <button onclick="showFavs()">⭐ 즐겨찾기</button>
+  <button onclick="precacheCurrentView()">📥 오프라인 저장</button>
+</div>
+
+<div id="info"></div>
+<button id="sos" onclick="sos()">SOS<br>122</button>
+
+<script>
+/* ======================================================
+   설정
+====================================================== */
+const KHOA_KEY = 'c282fed952f9ab142024c8e037b78de6fb22d5df62968e5907b2983482ecc830';  // ← 변경 필요
+const TIDE_API = 'https://apis.data.go.kr/1192000/TideObsPreTab/getTideObsPreTab';
+// CORS 문제가 있다면 자체 프록시 URL로 교체. 예: 'http://localhost:3001/1192000/...'
+
+/* ======================================================
+   1. 지도 초기화
+====================================================== */
+const map = L.map('map', { zoomControl:true }).setView([36.5, 127.8], 7);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'© OpenStreetMap', maxZoom:19
+}).addTo(map);
+
+const seaMap = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
+  attribution:'© OpenSeaMap', maxZoom:18
+});
+document.getElementById('seamap').onchange = e =>
+  e.target.checked ? seaMap.addTo(map) : map.removeLayer(seaMap);
+
+document.getElementById('night').onchange = e =>
+  document.body.classList.toggle('night', e.target.checked);
+
+/* ======================================================
+   2. 현위치
+====================================================== */
+const locateCtrl = L.control.locate({
+  position:'topleft',
+  strings:{ title:'내 위치 표시' },
+  flyTo:true, keepCurrentZoomLevel:false,
+  locateOptions:{ enableHighAccuracy:true, maxZoom:14 }
+}).addTo(map);
+
+let myPos = null;
+map.on('locationfound', e => { myPos = e.latlng; });
+
+/* ======================================================
+   3. 어초 데이터 로딩 (GeoJSON)
+====================================================== */
+const allReefs = [];
+const layerGroups = {};
+
+async function loadAllReefs(){
+  const res = await fetch('./geojson/all_reefs.geojson');
+  if (!res.ok) throw new Error('GeoJSON 로딩 실패');
+  const geo = await res.json();
+
+  const byRegion = {};
+  geo.features.forEach(f => {
+    if (f.geometry.type !== 'Point') return;
+    const [lon, lat] = f.geometry.coordinates;
+    const region = f.properties.region || '기타';
+    const color  = f.properties.color  || '#666';
+    const name   = f.properties.name   || '어초';
+    const desc   = f.properties.desc   || '';
+
+    if (!byRegion[region]){
+      byRegion[region] = L.markerClusterGroup({
+        iconCreateFunction: c => L.divIcon({
+          html:`<div style="background:${color};color:#fff;border-radius:50%;
+                width:36px;height:36px;display:flex;align-items:center;
+                justify-content:center;font-weight:bold;border:2px solid #fff;
+                box-shadow:0 1px 3px rgba(0,0,0,0.4);">${c.getChildCount()}</div>`,
+          className:'', iconSize:[36,36]
+        })
+      });
+      byRegion[region]._color = color;
+    }
+
+    const icon = L.divIcon({
+      html:`<div style="background:${color};width:12px;height:12px;
+            border-radius:50%;border:2px solid #fff;box-shadow:0 0 3px #000;"></div>`,
+      className:'', iconSize:[16,16]
+    });
+    const marker = L.marker([lat,lon], { icon }).bindTooltip(name, { direction:'top' });
+    const reef = { name, lat, lon, region, desc, color, marker };
+    allReefs.push(reef);
+    marker.on('click', () => showReef(reef));
+    byRegion[region].addLayer(marker);
+  });
+
+  Object.entries(byRegion).forEach(([region, group]) => {
+    layerGroups[region] = group;
+    group.addTo(map);
+  });
+  buildLayerUI();
+}
+
+function buildLayerUI(){
+  const list = document.getElementById('layerList');
+  list.innerHTML = '';
+  Object.entries(layerGroups).forEach(([region, group]) => {
+    const id = 'lyr_'+region;
+    const count = allReefs.filter(r => r.region === region).length;
+    list.insertAdjacentHTML('beforeend',
+      `<label><input type="checkbox" id="${id}" checked>
+       <span style="color:${group._color}">●</span> ${region} (${count})</label>`);
+    document.getElementById(id).onchange = e =>
+      e.target.checked ? group.addTo(map) : map.removeLayer(group);
+  });
+}
+
+/* ======================================================
+   4. 어초 정보 패널
+====================================================== */
+async function showReef(reef){
+  const info = document.getElementById('info');
+  let html = `<button class="close" onclick="document.getElementById('info').style.display='none'">✕</button>
+    <b>📍 ${reef.name}</b> <small>(${reef.region})</small><br>
+    위경도: ${reef.lat.toFixed(5)}, ${reef.lon.toFixed(5)}<br>
+    DMS: ${toDMS(reef.lat,'lat')} / ${toDMS(reef.lon,'lon')}<br>`;
+
+  if (myPos){
+    const d = map.distance(myPos, [reef.lat, reef.lon]) / 1000;
+    const b = calcBearing(myPos.lat, myPos.lng, reef.lat, reef.lon);
+    html += `🚤 거리: <b>${d.toFixed(2)} km</b> · 🧭 방위: <b>${b.toFixed(0)}°</b> ${bearingArrow(b)}<br>`;
+    html += `<button onclick="navigateTo(${reef.lat},${reef.lon})">🗺️ 경로</button>`;
+    html += `<button onclick="drawStraightLine(${reef.lat},${reef.lon})">📏 직선</button>`;
+  } else {
+    html += `<small>※ 좌측 ⊕ 버튼으로 현위치 잡아주세요</small><br>`;
+  }
+  html += `<button onclick="copyCoord(${reef.lat},${reef.lon})">📋 좌표</button>`;
+  html += `<button onclick="toggleFav('${reef.name.replace(/'/g,"\\'")}')">⭐</button>`;
+  html += `<div id="tideBox" style="margin-top:6px;"><i>물때 로딩중...</i></div>`;
+
+  info.innerHTML = html;
+  info.style.display = 'block';
+
+  showTideFor(reef.lat, reef.lon).then(t => {
+    const el = document.getElementById('tideBox');
+    if (el) el.innerHTML = t;
+  });
+}
+
+/* ======================================================
+   5. 거리·방위·DMS 계산
+====================================================== */
+function calcBearing(lat1,lon1,lat2,lon2){
+  const φ1 = lat1*Math.PI/180, φ2 = lat2*Math.PI/180;
+  const Δλ = (lon2-lon1)*Math.PI/180;
+  const y = Math.sin(Δλ)*Math.cos(φ2);
+  const x = Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
+  return (Math.atan2(y,x)*180/Math.PI + 360) % 360;
+}
+function bearingArrow(b){
+  const dirs = ['↑','↗','→','↘','↓','↙','←','↖'];
+  return dirs[Math.round(b/45) % 8];
+}
+function toDMS(v, type){
+  const abs = Math.abs(v);
+  const d = Math.floor(abs);
+  const m = Math.floor((abs-d)*60);
+  const s = (((abs-d)*60-m)*60).toFixed(1);
+  const dir = type==='lat' ? (v>=0?'N':'S') : (v>=0?'E':'W');
+  return `${d}°${m}'${s}"${dir}`;
+}
+function haversine(la1,lo1,la2,lo2){
+  const R=6371, toR=x=>x*Math.PI/180;
+  const dLa=toR(la2-la1), dLo=toR(lo2-lo1);
+  const a=Math.sin(dLa/2)**2+Math.cos(toR(la1))*Math.cos(toR(la2))*Math.sin(dLo/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+
+/* ======================================================
+   6. 네비게이션 (도로 경로 + 해상 직선)
+====================================================== */
+let routeCtrl = null, straightLine = null;
+
+function navigateTo(lat, lon){
+  if (!myPos){ alert('먼저 현위치를 잡아주세요'); return; }
+  clearRoute();
+  routeCtrl = L.Routing.control({
+    waypoints:[ myPos, L.latLng(lat,lon) ],
+    router: L.Routing.osrmv1({ serviceUrl:'https://router.project-osrm.org/route/v1' }),
+    lineOptions:{ styles:[{color:'#ff3300', weight:5, opacity:0.8}] },
+    show:true, addWaypoints:false, draggableWaypoints:false, fitSelectedRoutes:true
+  }).addTo(map);
+}
+function drawStraightLine(lat, lon){
+  if (!myPos){ alert('먼저 현위치를 잡아주세요'); return; }
+  clearRoute();
+  const dist = (map.distance(myPos, [lat,lon])/1000).toFixed(2);
+  const b = calcBearing(myPos.lat, myPos.lng, lat, lon).toFixed(0);
+  straightLine = L.polyline([myPos, [lat,lon]], { color:'#ff0066', weight:3, dashArray:'10,8' }).addTo(map);
+  straightLine.bindTooltip(`${dist}km · ${b}°`, { permanent:true, direction:'center' }).openTooltip();
+  map.fitBounds(straightLine.getBounds(), { padding:[50,50] });
+}
+function clearRoute(){
+  if (routeCtrl){ map.removeControl(routeCtrl); routeCtrl = null; }
+  if (straightLine){ map.removeLayer(straightLine); straightLine = null; }
+}
+
+/* ======================================================
+   7. 좌표 복사 / 즐겨찾기
+====================================================== */
+function copyCoord(lat, lon){
+  const text = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  navigator.clipboard.writeText(text);
+  alert('좌표 복사: '+text);
+}
+function getFavs(){ return JSON.parse(localStorage.getItem('favs')||'[]'); }
+function setFavs(f){ localStorage.setItem('favs', JSON.stringify(f)); }
+function toggleFav(name){
+  const favs = getFavs();
+  const i = favs.indexOf(name);
+  if (i>=0) favs.splice(i,1); else favs.push(name);
+  setFavs(favs);
+  alert((i>=0?'⭐ 해제':'⭐ 추가')+': '+name);
+}
+function showFavs(){
+  const favs = getFavs();
+  if (!favs.length){ alert('즐겨찾기가 없습니다'); return; }
+  const list = favs.map(n => {
+    const r = allReefs.find(x => x.name === n);
+    return r ? `<li><a href="#" onclick="map.setView([${r.lat},${r.lon}],14);showReef(allReefs.find(x=>x.name==='${n.replace(/'/g,"\\'")}'));return false;">${n} (${r.region})</a></li>` : '';
+  }).join('');
+  const w = window.open('', 'favs', 'width=300,height=400');
+  w.document.write(`<h3>⭐ 즐겨찾기</h3><ul>${list}</ul>`);
+}
+
+/* ======================================================
+   8. 검색 / 반경 검색
+====================================================== */
+document.getElementById('search').oninput = e => {
+  const q = e.target.value.toLowerCase().trim();
+  if (!q) return;
+  const found = allReefs.find(r => r.name.toLowerCase().includes(q));
+  if (found){
+    map.setView([found.lat, found.lon], 14);
+    setTimeout(() => showReef(found), 300);
+  }
+};
+
+let radiusCircle = null;
+document.getElementById('radius').onchange = e => {
+  const km = parseFloat(e.target.value);
+  if (radiusCircle){ map.removeLayer(radiusCircle); radiusCircle = null; }
+  if (!km) return;
+  if (!myPos){ alert('먼저 현위치를 잡아주세요'); e.target.value='0'; return; }
+  radiusCircle = L.circle(myPos, { radius:km*1000, color:'#00aa00', fillOpacity:0.08 }).addTo(map);
+  map.fitBounds(radiusCircle.getBounds());
+  const near = allReefs.filter(r => map.distance(myPos,[r.lat,r.lon]) <= km*1000);
+  alert(`반경 ${km}km 내 어초 ${near.length}개`);
+};
+
+/* ======================================================
+   9. 물때 (조석) API
+====================================================== */
+const TIDE_STATIONS = [
+  { code:'DT_0001', name:'인천',     lat:37.4514, lon:126.5921 },
+  { code:'DT_0063', name:'안흥',     lat:36.6745, lon:126.1300 },
+  { code:'DT_0007', name:'군산',     lat:35.9753, lon:126.5631 },
+  { code:'DT_0010', name:'위도',     lat:35.6197, lon:126.3008 },
+  { code:'DT_0004', name:'영광',     lat:35.4297, lon:126.4233 },
+  { code:'DT_0017', name:'목포',     lat:34.7794, lon:126.3756 },
+  { code:'DT_0023', name:'완도',     lat:34.3158, lon:126.7592 },
+  { code:'DT_0036', name:'고흥발포', lat:34.5025, lon:127.4869 },
+  { code:'DT_0033', name:'여수',     lat:34.7472, lon:127.7656 },
+  { code:'DT_0028', name:'통영',     lat:34.8275, lon:128.4339 },
+  { code:'DT_0031', name:'마산',     lat:35.1944, lon:128.5747 },
+  { code:'DT_0032', name:'부산',     lat:35.0961, lon:129.0353 },
+  { code:'DT_0040', name:'울산',     lat:35.5022, lon:129.3870 },
+  { code:'DT_0044', name:'포항',     lat:36.0467, lon:129.3775 },
+  { code:'DT_0049', name:'후포',     lat:36.6786, lon:129.4528 },
+  { code:'DT_0053', name:'묵호',     lat:37.5503, lon:129.1156 },
+  { code:'DT_0059', name:'속초',     lat:38.2069, lon:128.5944 },
+];
+
+function nearestStation(lat, lon){
+  let best = null, min = Infinity;
+  for (const s of TIDE_STATIONS){
+    const d = haversine(lat, lon, s.lat, s.lon);
+    if (d < min){ min = d; best = s; }
+  }
+  return { station:best, dist:min };
+}
+function ymd(d){
+  return d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0');
+}
+
+const tideCache = new Map();
+async function fetchTide(obsCode, dateStr){
+  const key = obsCode+'_'+dateStr;
+  if (tideCache.has(key)) return tideCache.get(key);
+  const cached = sessionStorage.getItem('tide_'+key);
+  if (cached){
+    const data = JSON.parse(cached);
+    tideCache.set(key, data);
+    return data;
+  }
+  const url = `${TIDE_API}?ServiceKey=${encodeURIComponent(KHOA_KEY)}`
+            + `&ObsCode=${obsCode}&Date=${dateStr}&ResultType=json`;
+  const res = await fetch(url);
+  const json = await res.json();
+  const data = json?.result?.data || [];
+  tideCache.set(key, data);
+  sessionStorage.setItem('tide_'+key, JSON.stringify(data));
+  return data;
+}
+
+async function showTideFor(lat, lon){
+  if (!KHOA_KEY || KHOA_KEY.startsWith('여기에')) {
+    return `<hr><i>※ KHOA_KEY를 설정하면 물때 정보가 표시됩니다</i>`;
+  }
+  const { station, dist } = nearestStation(lat, lon);
+  if (!station) return '';
+
+  try {
+    const today = await fetchTide(station.code, ymd(new Date()));
+    if (!today.length) return `<hr><i>조석 정보 없음 (${station.name})</i>`;
+
+    const rows = today.map(t => {
+      const isHigh = t.hl_code === '고조' || t.hl_code === 'H';
+      const time = (t.tph_time || '').substring(11,16);
+      return `<span style="color:${isHigh?'#88ccff':'#ffcc88'}">
+                ${isHigh?'🔼 만조':'🔽 간조'} ${time} (${t.tph_level}cm)
+              </span>`;
+    }).join('<br>');
+
+    const now = new Date();
+    const next = today.find(t => new Date((t.tph_time||'').replace(' ','T')) > now);
+    let countdown = '';
+    if (next){
+      const diff = (new Date(next.tph_time.replace(' ','T')) - now)/60000;
+      const h = Math.floor(diff/60), m = Math.floor(diff%60);
+      countdown = `<br><b>⏱ 다음 ${next.hl_code} ${h}시간 ${m}분 후</b>`;
+    }
+    return `<hr><b>🌊 물때 (${station.name}, ${dist.toFixed(0)}km)</b><br>${rows}${countdown}`;
+  } catch(e){
+    console.error(e);
+    return `<hr><i>조석 API 오류 (CORS 또는 키 확인)</i>`;
+  }
+}
+
+/* ======================================================
+   10. SOS
+====================================================== */
+function sos(){
+  const coord = myPos ? `${myPos.lat.toFixed(5)}, ${myPos.lng.toFixed(5)}` : '위치 확인 불가';
+  navigator.clipboard?.writeText(coord);
+  if (confirm(`🚨 해양경찰(122)에 전화하시겠습니까?\n현재좌표: ${coord}\n(좌표가 클립보드에 복사되었습니다)`)){
+    location.href = 'tel:122';
+  }
+}
+
+/* ======================================================
+   11. 패널 토글 (모바일)
+====================================================== */
+function togglePanel(){
+  document.getElementById('panel').classList.toggle('hidden');
+}
+
+/* ======================================================
+   12. PWA: 서비스 워커 등록
+====================================================== */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('SW 등록됨', reg.scope))
+      .catch(err => console.error('SW 실패', err));
+  });
+}
+
+/* ======================================================
+   13. 출항 전 타일 사전 다운로드
+====================================================== */
+function latLngToTile(lat, lon, z){
+  const n = 2 ** z;
+  return {
+    x: Math.floor((lon + 180) / 360 * n),
+    y: Math.floor((1 - Math.log(Math.tan(lat*Math.PI/180) + 1/Math.cos(lat*Math.PI/180)) / Math.PI) / 2 * n),
+  };
+}
+async function precacheCurrentView(maxZoom = 14){
+  if (!navigator.serviceWorker.controller){
+    alert('서비스 워커가 아직 활성화되지 않았습니다. 새로고침 후 다시 시도해주세요.');
+    return;
+  }
+  const b = map.getBounds();
+  const urls = [];
+  const startZ = Math.max(map.getZoom(), 8);
+  for (let z = startZ; z <= maxZoom; z++){
+    const nw = latLngToTile(b.getNorth(), b.getWest(), z);
+    const se = latLngToTile(b.getSouth(), b.getEast(), z);
+    for (let x = nw.x; x <= se.x; x++)
+      for (let y = nw.y; y <= se.y; y++)
+        urls.push(`https://a.tile.openstreetmap.org/${z}/${x}/${y}.png`);
+  }
+  if (!confirm(`${urls.length}개 타일 다운로드 (약 ${(urls.length*15/1024).toFixed(1)}MB)\n진행할까요?`)) return;
+
+  navigator.serviceWorker.controller.postMessage({ type:'PRECACHE_TILES', urls });
+  navigator.serviceWorker.onmessage = e => {
+    if (e.data.type === 'PROGRESS') console.log(`${e.data.done}/${e.data.total}`);
+    if (e.data.type === 'DONE') alert(`✅ ${e.data.done}개 타일 저장 완료`);
+  };
+}
+
+/* ======================================================
+   14. 시작
+====================================================== */
+loadAllReefs().catch(err => {
+  document.getElementById('layerList').innerHTML =
+    `<span style="color:red">GeoJSON 로딩 실패<br>먼저 convert.js를 실행해 주세요</span>`;
+  console.error(err);
+});
+</script>
+</body>
+</html>
