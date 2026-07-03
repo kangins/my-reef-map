@@ -90,7 +90,90 @@
     z-index:100000;
   }
   #splashSkip:hover { background:rgba(0,0,0,0.8); }
-  /* ========================================================== */
+
+  /* ===================== SOS 커스텀 모달 ===================== */
+  #sosModal {
+    position:fixed; top:0; left:0; right:0; bottom:0;
+    z-index:99998;
+    background:rgba(0,0,0,0.75);
+    display:none;
+    align-items:center; justify-content:center;
+    animation:sosFadeIn 0.2s ease;
+  }
+  #sosModal.show { display:flex; }
+  @keyframes sosFadeIn { from{opacity:0;} to{opacity:1;} }
+
+  #sosBox {
+    background:linear-gradient(135deg, #c62828, #8b0000);
+    color:#fff;
+    border-radius:16px;
+    padding:24px 20px;
+    max-width:340px;
+    width:88%;
+    box-shadow:0 8px 40px rgba(255,0,0,0.5), 0 0 0 3px #ffcc44;
+    text-align:center;
+    animation:sosZoomIn 0.3s ease;
+  }
+  @keyframes sosZoomIn {
+    from{ transform:scale(0.7); opacity:0; }
+    to  { transform:scale(1);   opacity:1; }
+  }
+  #sosBox .icon {
+    font-size:52px;
+    margin-bottom:8px;
+    animation:sosBlink 0.8s infinite;
+  }
+  @keyframes sosBlink { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  #sosBox h2 {
+    margin:0 0 12px;
+    font-size:22px;
+    letter-spacing:2px;
+    text-shadow:0 2px 4px rgba(0,0,0,0.5);
+  }
+  #sosBox .coord {
+    background:rgba(0,0,0,0.35);
+    padding:12px;
+    border-radius:8px;
+    margin:12px 0;
+    font-family:'Courier New', monospace;
+    font-size:14px;
+    word-break:break-all;
+    border:1px dashed rgba(255,255,255,0.3);
+  }
+  #sosBox .coord b { color:#ffcc44; display:block; margin-bottom:4px; font-family:inherit; font-size:11px; letter-spacing:1px; }
+  #sosBox .copied {
+    font-size:11px; color:#88ffaa; margin-top:4px;
+  }
+  #sosBox .warn {
+    font-size:12px;
+    color:#ffcc44;
+    margin:10px 0 16px;
+    line-height:1.5;
+  }
+  #sosBox .btns {
+    display:flex; gap:10px; margin-top:8px;
+  }
+  #sosBox button {
+    flex:1; padding:14px 8px; border:none; border-radius:10px;
+    font-size:15px; font-weight:bold; cursor:pointer;
+    transition:transform 0.1s, box-shadow 0.2s;
+  }
+  #sosBox button:active { transform:scale(0.95); }
+  #sosBox .btnCall {
+    background:#00c853; color:#fff;
+    box-shadow:0 4px 12px rgba(0,200,83,0.5);
+  }
+  #sosBox .btnCall:hover { background:#00e676; }
+  #sosBox .btnCancel {
+    background:rgba(0,0,0,0.4); color:#fff;
+    border:1px solid rgba(255,255,255,0.3);
+  }
+  #sosBox .btnCancel:hover { background:rgba(0,0,0,0.6); }
+  #sosBox .extra {
+    margin-top:14px; padding-top:12px;
+    border-top:1px solid rgba(255,255,255,0.2);
+    font-size:11px; color:rgba(255,255,255,0.85); line-height:1.6;
+  }
 
   /* 사이드 패널 */
   #panel {
@@ -257,7 +340,31 @@
     <span class="spinner"></span><span id="splashText">지도를 불러오는 중...</span>
   </div>
 </div>
-<!-- ===================================== -->
+
+<!-- ========== SOS 커스텀 확인 모달 ========== -->
+<div id="sosModal" onclick="if(event.target.id==='sosModal') closeSosModal()">
+  <div id="sosBox">
+    <div class="icon">🚨</div>
+    <h2>해양 긴급 신고</h2>
+    <div class="coord">
+      <b>📍 현재 좌표</b>
+      <span id="sosCoord">위치 확인 중...</span>
+      <div class="copied" id="sosCopied"></div>
+    </div>
+    <div class="warn">
+      ⚠️ 실제 응급상황에만 신고하세요<br>
+      허위 신고 시 법적 처벌 대상입니다
+    </div>
+    <div class="btns">
+      <button class="btnCancel" onclick="closeSosModal()">취소</button>
+      <button class="btnCall" onclick="callEmergency()">📞 119 통화</button>
+    </div>
+    <div class="extra">
+      🚑 해양·육상 통합 긴급신고: <b style="color:#ffcc44;">119</b><br>
+      좌표는 자동 복사되어 문자 전송 시 붙여넣기 가능
+    </div>
+  </div>
+</div>
 
 <div id="map"></div>
 <button id="toggleBtn" onclick="togglePanel()">≡</button>
@@ -342,8 +449,8 @@
 /* ======================================================
    0. 스플래시 스크린 제어
 ====================================================== */
-const SPLASH_MIN_MS = 2000;   // 최소 표시 시간 (2초)
-const SPLASH_MAX_MS = 6000;   // 최대 표시 시간 (6초) - 로딩 실패해도 사라짐
+const SPLASH_MIN_MS = 2000;
+const SPLASH_MAX_MS = 6000;
 const splashStartTime = Date.now();
 let splashHidden = false;
 
@@ -359,7 +466,6 @@ function hideSplash(){
   }, wait);
 }
 
-// 이미지 로드 실패 시 대체 배경
 document.getElementById('splashImg').onerror = function(){
   const s = document.getElementById('splash');
   s.style.background = 'linear-gradient(135deg, #001a33, #003366, #0066aa)';
@@ -370,10 +476,8 @@ document.getElementById('splashImg').onerror = function(){
   s.insertBefore(title, document.getElementById('splashLoader'));
 };
 
-// 안전장치: 최대 시간 초과 시 강제 숨김
 setTimeout(hideSplash, SPLASH_MAX_MS);
 
-// 사용자가 스플래시 이미지를 탭하면 즉시 닫기
 document.getElementById('splash').addEventListener('click', function(e){
   if (e.target.id === 'splashSkip') return;
   hideSplash();
@@ -1148,14 +1252,46 @@ async function showTideFor(lat, lon){
 }
 
 /* ======================================================
-   16. SOS
+   16. SOS - 커스텀 확인 모달 (119 단일)
 ====================================================== */
 function sos(){
-  const coord = myPos ? `${myPos.lat.toFixed(5)}, ${myPos.lng.toFixed(5)}` : '위치 확인 불가';
-  navigator.clipboard?.writeText(coord);
-  if (confirm(`🚨 해양경찰(119)?\n좌표: ${coord}`)){
-    location.href = 'tel:119';
+  const modal = document.getElementById('sosModal');
+  const coordEl = document.getElementById('sosCoord');
+  const copiedEl = document.getElementById('sosCopied');
+  
+  copiedEl.textContent = '';
+  
+  if (myPos){
+    const lat = myPos.lat.toFixed(5);
+    const lon = myPos.lng.toFixed(5);
+    const dmsLat = toDMS(myPos.lat, 'lat');
+    const dmsLon = toDMS(myPos.lng, 'lon');
+    coordEl.innerHTML = `${lat}, ${lon}<br><small style="opacity:0.85">${dmsLat} / ${dmsLon}</small>`;
+    
+    const copyText = `해양 긴급! 위치: ${lat}, ${lon} (${dmsLat} ${dmsLon})`;
+    if (navigator.clipboard){
+      navigator.clipboard.writeText(copyText).then(() => {
+        copiedEl.textContent = '✓ 좌표 복사 완료 (문자 붙여넣기 가능)';
+      }).catch(() => {
+        copiedEl.textContent = '';
+      });
+    }
+  } else {
+    coordEl.innerHTML = `<span style="color:#ffaa88;">⚠️ 위치를 확인할 수 없습니다<br><small>좌측 ⊕ 버튼으로 GPS 활성화</small></span>`;
   }
+  
+  modal.classList.add('show');
+  
+  if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+}
+
+function closeSosModal(){
+  document.getElementById('sosModal').classList.remove('show');
+}
+
+function callEmergency(){
+  closeSosModal();
+  location.href = 'tel:119';
 }
 
 /* ======================================================
@@ -1204,12 +1340,12 @@ async function precacheCurrentView(maxZoom = 14){
 }
 
 /* ======================================================
-   20. 시작 (스플래시 연동)
+   20. 시작
 ====================================================== */
 loadAllReefs().then(() => {
   redrawWaypointLine();
   document.getElementById('splashText').textContent = '준비 완료!';
-  hideSplash();   // ← 지도 데이터 로딩 완료 시 스플래시 사라짐
+  hideSplash();
 }).catch(err => {
   const list = document.getElementById('layerList');
   list.innerHTML = `<div style="color:red; font-size:11px;">
