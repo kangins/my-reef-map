@@ -1530,7 +1530,7 @@ async function showTideFor(lat, lon){
   
   // 유리 시간대
   if (bestTimes.length) {
-    detail += `<div class="section-title">🎯 유리 시간대</div>`;
+    detail += `<div class="section-title">🎯 조과 좋은 시간대</div>`;
     bestTimes.forEach(t => {
       const stars = '⭐'.repeat(t.stars);
       detail += `<div>${t.start}-${t.end} ${stars} <small>(${t.reason})</small></div>`;
