@@ -486,7 +486,7 @@ document.getElementById('splash').addEventListener('click', function(e){
 /* ======================================================
    설정
 ====================================================== */
-const KHOA_KEY = 'c282fed952f9ab142024c8e037b78de6fb22d5df62968e5907b2983482ecc830';
+const KHOA_KEY =c282fed952f9ab142024c8e037b78de6fb22d5df62968e5907b2983482ecc830;
 const TIDE_API = 'https://apis.data.go.kr/1192000/TideObsPreTab/getTideObsPreTab';
 
 /* ======================================================
@@ -1228,7 +1228,7 @@ async function fetchTide(obsCode, dateStr){
   return data;
 }
 async function showTideFor(lat, lon){
-  if (!KHOA_KEY || KHOA_KEY.startsWith('c282fed952f9ab142024c8e037b78de6fb22d5df62968e5907b2983482ecc830')) return `<hr><i>※ KHOA_KEY 설정 필요</i>`;
+  if (!KHOA_KEY || KHOA_KEY.startsWith('여기에')) return `<hr><i>※ KHOA_KEY 설정 필요</i>`;
   const { station, dist } = nearestStation(lat, lon);
   if (!station) return '';
   try {
