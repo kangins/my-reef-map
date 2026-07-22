@@ -1188,23 +1188,38 @@ document.getElementById('radius').onchange = e => {
    15. 물때 API
 ====================================================== */
 const TIDE_STATIONS = [
-  { code:'DT_0001', name:'인천',     lat:37.4514, lon:126.5921 },
-  { code:'DT_0063', name:'안흥',     lat:36.6745, lon:126.1300 },
-  { code:'DT_0007', name:'군산',     lat:35.9753, lon:126.5631 },
-  { code:'DT_0010', name:'위도',     lat:35.6197, lon:126.3008 },
-  { code:'DT_0004', name:'영광',     lat:35.4297, lon:126.4233 },
-  { code:'DT_0017', name:'목포',     lat:34.7794, lon:126.3756 },
-  { code:'DT_0023', name:'완도',     lat:34.3158, lon:126.7592 },
-  { code:'DT_0036', name:'고흥발포', lat:34.5025, lon:127.4869 },
-  { code:'DT_0033', name:'여수',     lat:34.7472, lon:127.7656 },
-  { code:'DT_0028', name:'통영',     lat:34.8275, lon:128.4339 },
-  { code:'DT_0031', name:'마산',     lat:35.1944, lon:128.5747 },
-  { code:'DT_0032', name:'부산',     lat:35.0961, lon:129.0353 },
-  { code:'DT_0040', name:'울산',     lat:35.5022, lon:129.3870 },
-  { code:'DT_0044', name:'포항',     lat:36.0467, lon:129.3775 },
-  { code:'DT_0049', name:'후포',     lat:36.6786, lon:129.4528 },
-  { code:'DT_0053', name:'묵호',     lat:37.5503, lon:129.1156 },
-  { code:'DT_0059', name:'속초',     lat:38.2069, lon:128.5944 },
+  // 서해
+  { code: 'DT_0001', name: '인천',   lat: 37.4517, lon: 126.5924 },
+  { code: 'DT_0002', name: '평택',   lat: 36.9664, lon: 126.8225 },
+  { code: 'DT_0003', name: '안흥',   lat: 36.6744, lon: 126.1289 },
+  { code: 'DT_0018', name: '군산',   lat: 35.9753, lon: 126.5631 },
+  { code: 'DT_0019', name: '위도',   lat: 35.6197, lon: 126.3006 },
+  { code: 'DT_0020', name: '영광',   lat: 35.4283, lon: 126.4192 },
+  { code: 'DT_0021', name: '목포',   lat: 34.7794, lon: 126.3756 },
+  { code: 'DT_0059', name: '백령도', lat: 37.9556, lon: 124.7361 },
+  { code: 'DT_0025', name: '흑산도', lat: 34.6836, lon: 125.4344 },
+  
+  // 남해
+  { code: 'DT_0022', name: '진도',   lat: 34.3775, lon: 126.3086 },
+  { code: 'DT_0023', name: '완도',   lat: 34.3153, lon: 126.7592 },
+  { code: 'DT_0024', name: '거문도', lat: 34.0281, lon: 127.3078 },
+  { code: 'DT_0026', name: '여수',   lat: 34.7472, lon: 127.7656 },
+  { code: 'DT_0027', name: '통영',   lat: 34.8275, lon: 128.4344 },
+  { code: 'DT_0028', name: '가덕도', lat: 35.0244, lon: 128.8106 },
+  { code: 'DT_0005', name: '부산',   lat: 35.0964, lon: 129.0356 },
+  
+  // 동해
+  { code: 'DT_0007', name: '울산',   lat: 35.5017, lon: 129.3872 },
+  { code: 'DT_0008', name: '포항',   lat: 36.0517, lon: 129.3775 },
+  { code: 'DT_0009', name: '후포',   lat: 36.6772, lon: 129.4525 },
+  { code: 'DT_0010', name: '묵호',   lat: 37.5506, lon: 129.1161 },
+  { code: 'DT_0012', name: '속초',   lat: 38.2069, lon: 128.5942 },
+  
+  // 제주
+  { code: 'DT_0004', name: '제주',   lat: 33.5275, lon: 126.5433 },
+  { code: 'DT_0029', name: '서귀포', lat: 33.2400, lon: 126.5614 },
+  { code: 'DT_0030', name: '모슬포', lat: 33.2144, lon: 126.2508 },
+  { code: 'DT_0031', name: '성산포', lat: 33.4744, lon: 126.9269 }
 ];
 function nearestStation(lat, lon){
   let best = null, min = Infinity;
