@@ -21,6 +21,10 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.css"/>
 <script src="https://unpkg.com/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.js"></script>
 
+<!-- 🆕 낚시 정보 라이브러리 -->
+<script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lunar-javascript@1.6.9/dist/lunar.js"></script>
+
 <style>
   html, body {
     margin:0; height:100%;
@@ -213,6 +217,7 @@
     background:rgba(0,40,80,0.92); color:#fff; padding:12px 14px;
     border-radius:10px; font-size:13px; display:none; max-width:330px; line-height:1.5;
     box-shadow:0 2px 10px rgba(0,0,0,0.4);
+    max-height:70vh; overflow-y:auto;
   }
   #info button {
     background:#ff9500; color:#fff; border:none; padding:6px 10px;
@@ -221,6 +226,36 @@
   #info button.close { background:#666; float:right; padding:2px 8px; }
   #info b { color:#ffe066; }
   #info hr { border:none; border-top:1px solid rgba(255,255,255,0.3); margin:8px 0; }
+
+  /* 🆕 조과지수 스타일 */
+  #info .fishing-score {
+    font-size:1.15em;
+    font-weight:bold;
+    margin:6px 0;
+    padding:4px 0;
+  }
+  #info .detail-toggle {
+    display:inline-block;
+    color:#88ccff;
+    text-decoration:none;
+    margin-top:6px;
+    cursor:pointer;
+    font-size:12px;
+    user-select:none;
+  }
+  #info .detail-toggle:hover { color:#aaddff; }
+  #info .detail-panel {
+    margin-top:8px;
+    padding-top:8px;
+    border-top:1px dashed #556;
+  }
+  #info .detail-panel > div { margin-bottom:2px; }
+  #info .section-title {
+    color:#ffcc44;
+    font-weight:bold;
+    margin-top:8px !important;
+    margin-bottom:2px !important;
+  }
 
   #sos {
     position:absolute; bottom:10px; right:10px; z-index:1000;
@@ -329,8 +364,6 @@
     #compass { width:60px; height:60px; }
   }
 </style>
-<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-<script>eruda.init();</script>
 </head>
 <body>
 
@@ -614,7 +647,7 @@ async function showReef(reef){
   html += `<button onclick="copyCoord(${reef.lat},${reef.lon})">📋 좌표</button>`;
   html += `<button onclick="toggleFav('${nameEsc}')">⭐</button>`;
   html += `<button onclick="addWaypoint('${nameEsc}','${reef.region}',${reef.lat},${reef.lon})" style="background:#00aa66;">➕ 경유지</button>`;
-  html += `<div id="tideBox" style="margin-top:6px;"><i>물때 로딩중...</i></div>`;
+  html += `<div id="tideBox" style="margin-top:6px;"><i>낚시 정보 로딩중...</i></div>`;
 
   info.innerHTML = html;
   info.style.display = 'block';
@@ -654,7 +687,9 @@ function haversine(la1,lo1,la2,lo2){
   return 2*R*Math.asin(Math.sqrt(a));
 }
 function escapeStr(s){ return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
+</script>
 
+<script>
 /* ======================================================
    6. 경로/직선
 ====================================================== */
@@ -1185,7 +1220,7 @@ document.getElementById('radius').onchange = e => {
 };
 
 /* ======================================================
-   15. 물때 API
+   15. 물때 / 조석 / 낚시 정보
 ====================================================== */
 const TIDE_STATIONS = [
   // 서해
@@ -1198,7 +1233,6 @@ const TIDE_STATIONS = [
   { code: 'DT_0021', name: '목포',   lat: 34.7794, lon: 126.3756 },
   { code: 'DT_0059', name: '백령도', lat: 37.9556, lon: 124.7361 },
   { code: 'DT_0025', name: '흑산도', lat: 34.6836, lon: 125.4344 },
-  
   // 남해
   { code: 'DT_0022', name: '진도',   lat: 34.3775, lon: 126.3086 },
   { code: 'DT_0023', name: '완도',   lat: 34.3153, lon: 126.7592 },
@@ -1207,20 +1241,19 @@ const TIDE_STATIONS = [
   { code: 'DT_0027', name: '통영',   lat: 34.8275, lon: 128.4344 },
   { code: 'DT_0028', name: '가덕도', lat: 35.0244, lon: 128.8106 },
   { code: 'DT_0005', name: '부산',   lat: 35.0964, lon: 129.0356 },
-  
   // 동해
   { code: 'DT_0007', name: '울산',   lat: 35.5017, lon: 129.3872 },
   { code: 'DT_0008', name: '포항',   lat: 36.0517, lon: 129.3775 },
   { code: 'DT_0009', name: '후포',   lat: 36.6772, lon: 129.4525 },
   { code: 'DT_0010', name: '묵호',   lat: 37.5506, lon: 129.1161 },
   { code: 'DT_0012', name: '속초',   lat: 38.2069, lon: 128.5942 },
-  
   // 제주
   { code: 'DT_0004', name: '제주',   lat: 33.5275, lon: 126.5433 },
   { code: 'DT_0029', name: '서귀포', lat: 33.2400, lon: 126.5614 },
   { code: 'DT_0030', name: '모슬포', lat: 33.2144, lon: 126.2508 },
   { code: 'DT_0031', name: '성산포', lat: 33.4744, lon: 126.9269 }
 ];
+
 function nearestStation(lat, lon){
   let best = null, min = Infinity;
   for (const s of TIDE_STATIONS){
@@ -1230,6 +1263,7 @@ function nearestStation(lat, lon){
   return { station:best, dist:min };
 }
 function ymd(d){ return d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0'); }
+
 const tideCache = new Map();
 async function fetchTide(obsCode, dateStr){
   const key = obsCode + '_' + dateStr;
@@ -1237,65 +1271,284 @@ async function fetchTide(obsCode, dateStr){
   const cached = sessionStorage.getItem('tide_' + key);
   if (cached){
     const data = JSON.parse(cached);
-    tideCache.set(key, data);
-    return data;
+    if (data.length > 0){
+      tideCache.set(key, data);
+      return data;
+    }
   }
   const khoaUrl = `${TIDE_API}?serviceKey=${KHOA_KEY}&pageNo=1&numOfRows=100&type=json&obsCode=${obsCode}&reqDate=${dateStr}`;
   const url = `https://corsproxy.io/?${encodeURIComponent(khoaUrl)}`;
   
-  console.log('🌊 조석 API 호출:', khoaUrl);
-  
-  const res = await fetch(url);
-  const text = await res.text();
-  console.log('🌊 응답:', text.substring(0, 300));
-  
-  let data = [];
   try {
+    const res = await fetch(url);
+    const text = await res.text();
     const json = JSON.parse(text);
-    data = json?.body?.items?.item || json?.response?.body?.items?.item || [];
+    let data = json?.body?.items?.item || json?.response?.body?.items?.item || [];
     if (!Array.isArray(data)) data = [data];
+    tideCache.set(key, data);
+    if (data.length > 0) sessionStorage.setItem('tide_' + key, JSON.stringify(data));
+    return data;
   } catch(e) {
-    console.error('🌊 JSON 파싱 실패:', text);
+    console.warn('조석 API 오류', e);
     return [];
   }
-  
-  console.log('🌊 파싱된 데이터:', data);
-  
-  tideCache.set(key, data);
-  sessionStorage.setItem('tide_' + key, JSON.stringify(data));
-  return data;
 }
 
-async function showTideFor(lat, lon){
-  console.log('🎯 showTideFor 호출됨:', lat, lon);
-  if(!KHOA_KEY) return `<hr><i>※ KHOA_KEY 설정 필요</i>`;
-  const {station, dist} = nearestStation(lat, lon);
-  console.log('🎯 매칭된 관측소:', station, '거리:', dist);
-  if(!station) return '';
-  
-  const today = await fetchTide(station.code, ymd(new Date()));
-  console.log('📊 받은 데이터 개수:', today.length, '내용:', today);
-  
-  if(!today.length) return `<hr><i>조석 정보 없음</i>`;
-  
-  const rows = today.map(t => {
-    const level = parseFloat(t.predcTdlvVl);
-    const isHigh = (t.extrSe === '1' || t.extrSe === '2');
-    const time = (t.predcDt || '').substring(11, 16);
-    return `<span style="color:${isHigh?'#88ccff':'#ffcc88'}">${isHigh?'🔼 만조':'🔽 간조'} ${time} (${level.toFixed(0)}cm)</span>`;
-  }).join('<br>');
-  
-  const now = new Date();
-  const next = today.find(t => new Date((t.predcDt || '').replace(' ','T')) > now);
-  let countdown = '';
-  if(next){
-    const diff = (new Date(next.predcDt.replace(' ','T')) - now) / 60000;
-    const h = Math.floor(diff/60), m = Math.floor(diff%60);
-    const isHigh = (next.extrSe === '1' || next.extrSe === '2');
-    countdown = `<br><b>⏱ 다음 ${isHigh?'만조':'간조'} ${h}시간 ${m}분 후</b>`;
+/* ---------- 물때 (서해식 8물때) ---------- */
+function getMulddae(date) {
+  let lunarDay;
+  try {
+    if (typeof Lunar !== 'undefined') {
+      lunarDay = Lunar.fromDate(date).getDay();
+    } else {
+      throw new Error('no lunar');
+    }
+  } catch(e) {
+    const epoch = new Date('2000-02-05');
+    lunarDay = ((Math.floor((date - epoch) / 86400000)) % 30) + 1;
   }
   
-  return `<hr><b>🌊 물때 (${station.name}, ${dist.toFixed(0)}km)</b><br>${rows}${countdown}`;
+  const table = [
+    {n:8,  name:'무시', desc:'조금·물살 매우 약함', color:'#88ff88', power:1},
+    {n:1,  name:'1물', desc:'물살 약함',           color:'#aaddff', power:2},
+    {n:2,  name:'2물', desc:'물살 약함',           color:'#aaddff', power:2},
+    {n:3,  name:'3물', desc:'물살 보통',           color:'#ffcc88', power:3},
+    {n:4,  name:'4물', desc:'물살 보통',           color:'#ffcc88', power:3},
+    {n:5,  name:'5물', desc:'물살 강함',           color:'#ff8888', power:4},
+    {n:6,  name:'6물', desc:'물살 강함',           color:'#ff8888', power:4},
+    {n:7,  name:'7물', desc:'사리·물살 매우 강함', color:'#ff5555', power:5},
+    {n:8,  name:'8물', desc:'사리·물살 매우 강함', color:'#ff5555', power:5},
+    {n:9,  name:'9물', desc:'물살 강함',           color:'#ff8888', power:4},
+    {n:10, name:'10물', desc:'물살 강함',           color:'#ff8888', power:4},
+    {n:11, name:'11물', desc:'물살 보통',           color:'#ffcc88', power:3},
+    {n:12, name:'12물', desc:'물살 보통',           color:'#ffcc88', power:3},
+    {n:13, name:'13물', desc:'물살 약함',           color:'#aaddff', power:2},
+    {n:14, name:'14물', desc:'조금·물살 약함',      color:'#88ff88', power:1}
+  ];
+  const idx = ((lunarDay - 1) % 15 + 15) % 15;
+  return table[idx];
+}
+
+/* ---------- 일출/일몰/월/달 위상 ---------- */
+function getSunMoon(date, lat, lon) {
+  if (typeof SunCalc === 'undefined') return null;
+  try {
+    const sun = SunCalc.getTimes(date, lat, lon);
+    const moon = SunCalc.getMoonTimes(date, lat, lon);
+    const phase = SunCalc.getMoonIllumination(date);
+    
+    const phases = [
+      {min:0.00, max:0.03, name:'삭(신월)', icon:'🌑'},
+      {min:0.03, max:0.22, name:'초승달',   icon:'🌒'},
+      {min:0.22, max:0.28, name:'상현달',   icon:'🌓'},
+      {min:0.28, max:0.47, name:'차오르는 달', icon:'🌔'},
+      {min:0.47, max:0.53, name:'보름달',   icon:'🌕'},
+      {min:0.53, max:0.72, name:'기우는 달', icon:'🌖'},
+      {min:0.72, max:0.78, name:'하현달',   icon:'🌗'},
+      {min:0.78, max:0.97, name:'그믐달',   icon:'🌘'},
+      {min:0.97, max:1.01, name:'삭(신월)', icon:'🌑'}
+    ];
+    const moonPhase = phases.find(p => phase.phase >= p.min && phase.phase < p.max) || phases[0];
+    
+    return {
+      sunrise: sun.sunrise,
+      sunset: sun.sunset,
+      moonrise: moon.rise,
+      moonset: moon.set,
+      moonPhase: moonPhase,
+      illumination: (phase.fraction * 100).toFixed(0)
+    };
+  } catch(e) {
+    console.warn('SunCalc 오류', e);
+    return null;
+  }
+}
+
+/* ---------- 조과지수 (0~10) ---------- */
+function calcFishingScore(mulddae, tideData, sunMoon, now) {
+  let score = 0;
+  
+  // 1. 물때 (0~3점)
+  const mulddaeScore = Math.min(3, mulddae.power - 1);
+  score += mulddaeScore;
+  
+  // 2. 조수 변화 시점 (0~3점)
+  let tideScore = 0;
+  if (tideData && tideData.length) {
+    let minDiff = Infinity;
+    tideData.forEach(t => {
+      const dt = new Date((t.predcDt || '').replace(' ','T'));
+      const diff = Math.abs(dt - now);
+      if (diff < minDiff) minDiff = diff;
+    });
+    const minToTide = minDiff / 60000;
+    if (minToTide < 60) tideScore = 3;
+    else if (minToTide < 120) tideScore = 2;
+    else if (minToTide < 180) tideScore = 1;
+  }
+  score += tideScore;
+  
+  // 3. 일출/일몰 시간대 (0~2점)
+  let timeScore = 0;
+  if (sunMoon) {
+    const sunriseDiff = Math.abs(sunMoon.sunrise - now) / 60000;
+    const sunsetDiff = Math.abs(sunMoon.sunset - now) / 60000;
+    const minDiff = Math.min(sunriseDiff, sunsetDiff);
+    if (minDiff < 60) timeScore = 2;
+    else if (minDiff < 120) timeScore = 1;
+  }
+  score += timeScore;
+  
+  // 4. 달빛 (0~2점)
+  let moonScore = 0;
+  if (sunMoon) {
+    const illum = parseInt(sunMoon.illumination);
+    if (illum > 70) moonScore = 2;
+    else if (illum > 30) moonScore = 1;
+  }
+  score += moonScore;
+  
+  return Math.min(10, score);
+}
+
+/* ---------- 유리 시간대 계산 ---------- */
+function getBestTimes(tideData, sunMoon) {
+  const times = [];
+  const fmt = d => {
+    if (!d) return null;
+    const h = String(d.getHours()).padStart(2,'0');
+    const m = String(d.getMinutes()).padStart(2,'0');
+    return `${h}:${m}`;
+  };
+  
+  if (sunMoon && sunMoon.sunrise) {
+    const sr = new Date(sunMoon.sunrise);
+    times.push({
+      start: fmt(new Date(sr - 3600000)),
+      end: fmt(new Date(sr.getTime() + 3600000)),
+      stars: 3,
+      reason: '일출',
+      sortKey: sr.getTime()
+    });
+  }
+  if (sunMoon && sunMoon.sunset) {
+    const ss = new Date(sunMoon.sunset);
+    times.push({
+      start: fmt(new Date(ss - 3600000)),
+      end: fmt(new Date(ss.getTime() + 3600000)),
+      stars: 3,
+      reason: '일몰',
+      sortKey: ss.getTime()
+    });
+  }
+  
+  if (tideData) {
+    tideData.forEach(t => {
+      const dt = new Date((t.predcDt || '').replace(' ','T'));
+      if (isNaN(dt.getTime())) return;
+      const isHigh = t.extrSe === '1' || t.extrSe === '2';
+      times.push({
+        start: fmt(new Date(dt - 1800000)),
+        end: fmt(new Date(dt.getTime() + 1800000)),
+        stars: 2,
+        reason: isHigh ? '만조' : '간조',
+        sortKey: dt.getTime()
+      });
+    });
+  }
+  
+  return times.filter(t => t.start && t.end).sort((a,b) => a.sortKey - b.sortKey);
+}
+
+/* ---------- 통합 낚시 정보 표시 ---------- */
+async function showTideFor(lat, lon){
+  const {station, dist} = nearestStation(lat, lon);
+  if(!station) return '';
+  
+  const now = new Date();
+  const today = await fetchTide(station.code, ymd(now));
+  
+  const mulddae = getMulddae(now);
+  const sunMoon = getSunMoon(now, lat, lon);
+  const score = calcFishingScore(mulddae, today, sunMoon, now);
+  const bestTimes = getBestTimes(today, sunMoon);
+  
+  // 조과지수 스타일
+  const scoreEmoji = score >= 8 ? '🔥' : score >= 6 ? '⭐' : score >= 4 ? '👍' : '💤';
+  const scoreColor = score >= 8 ? '#ff5555' : score >= 6 ? '#ffcc44' : score >= 4 ? '#88ccff' : '#888888';
+  const scoreLabel = score >= 8 ? '최상' : score >= 6 ? '양호' : score >= 4 ? '보통' : '저조';
+  
+  // 다음 만조/간조
+  let nextTide = '';
+  if (today && today.length) {
+    const next = today.find(t => {
+      const dt = new Date((t.predcDt || '').replace(' ','T'));
+      return dt > now;
+    });
+    if (next) {
+      const dt = new Date(next.predcDt.replace(' ','T'));
+      const diff = (dt - now) / 60000;
+      const h = Math.floor(diff/60), m = Math.floor(diff%60);
+      const isHigh = next.extrSe === '1' || next.extrSe === '2';
+      nextTide = `⏱ 다음 ${isHigh?'만조':'간조'} ${h}시간 ${m}분 후`;
+    }
+  }
+  
+  // ============ 요약 부분 ============
+  let summary = `<hr>`;
+  summary += `<div class="fishing-score" style="color:${scoreColor}">🎣 조과지수 ${score}/10 ${scoreEmoji} <small style="font-weight:normal;opacity:0.8">(${scoreLabel})</small></div>`;
+  summary += `<div style="color:${mulddae.color}">🌊 ${mulddae.name} · ${mulddae.desc}</div>`;
+  if (nextTide) summary += `<div>${nextTide}</div>`;
+  summary += `<a class="detail-toggle" onclick="toggleTideDetail(this)">자세히 ▼</a>`;
+  
+  // ============ 상세 부분 (기본 숨김) ============
+  let detail = `<div class="detail-panel" style="display:none">`;
+  
+  // 조석
+  if (today && today.length) {
+    detail += `<div class="section-title">📊 조석 (${station.name}, ${dist.toFixed(0)}km)</div>`;
+    today.forEach(t => {
+      const level = parseFloat(t.predcTdlvVl);
+      const isHigh = t.extrSe === '1' || t.extrSe === '2';
+      const time = (t.predcDt || '').substring(11,16);
+      detail += `<div style="color:${isHigh?'#88ccff':'#ffcc88'}">${isHigh?'🔼 만조':'🔽 간조'} ${time} (${level.toFixed(0)}cm)</div>`;
+    });
+  } else {
+    detail += `<div class="section-title">📊 조석</div><div><i>정보 없음</i></div>`;
+  }
+  
+  // 일출/일몰
+  if (sunMoon) {
+    const fmt = d => d ? `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '--:--';
+    detail += `<div class="section-title">☀️ 일출/일몰</div>`;
+    detail += `<div>☀️ ${fmt(sunMoon.sunrise)} · 🌇 ${fmt(sunMoon.sunset)}</div>`;
+    
+    detail += `<div class="section-title">🌙 달</div>`;
+    detail += `<div>${sunMoon.moonPhase.icon} ${sunMoon.moonPhase.name} (조명 ${sunMoon.illumination}%)</div>`;
+    detail += `<div>🌙 월출 ${fmt(sunMoon.moonrise)} · 월몰 ${fmt(sunMoon.moonset)}</div>`;
+  }
+  
+  // 유리 시간대
+  if (bestTimes.length) {
+    detail += `<div class="section-title">🎯 유리 시간대</div>`;
+    bestTimes.forEach(t => {
+      const stars = '⭐'.repeat(t.stars);
+      detail += `<div>${t.start}-${t.end} ${stars} <small>(${t.reason})</small></div>`;
+    });
+  }
+  
+  detail += `</div>`;
+  
+  return summary + detail;
+}
+
+// 자세히 토글
+function toggleTideDetail(el){
+  const panel = el.nextElementSibling;
+  if (!panel) return;
+  const isHidden = panel.style.display === 'none';
+  panel.style.display = isHidden ? 'block' : 'none';
+  el.textContent = isHidden ? '접기 ▲' : '자세히 ▼';
 }
 
 /* ======================================================
