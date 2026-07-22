@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'reef-map-v2';
+const CACHE_VERSION = 'reef-map-v3';
 const TILE_CACHE    = 'reef-tiles-v1';
 
 const APP_SHELL = [
