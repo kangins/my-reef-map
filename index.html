@@ -1250,27 +1250,31 @@ async function fetchTide(obsCode, dateStr){
   return data;
 }
 async function showTideFor(lat, lon){
-  if (!KHOA_KEY || KHOA_KEY.startsWith('여기에')) return `<hr><i>※ KHOA_KEY 설정 필요</i>`;
-  const { station, dist } = nearestStation(lat, lon);
-  if (!station) return '';
-  try {
-    const today = await fetchTide(station.code, ymd(new Date()));
-    if (!today.length) return `<hr><i>조석 정보 없음</i>`;
-    const rows = today.map(t => {
-      const isHigh = t.hl_code === '고조' || t.hl_code === 'H';
-      const time = (t.tph_time || '').substring(11,16);
-      return `<span style="color:${isHigh?'#88ccff':'#ffcc88'}">${isHigh?'🔼 만조':'🔽 간조'} ${time} (${t.tph_level}cm)</span>`;
-    }).join('<br>');
-    const now = new Date();
-    const next = today.find(t => new Date((t.tph_time||'').replace(' ','T')) > now);
-    let countdown = '';
-    if (next){
-      const diff = (new Date(next.tph_time.replace(' ','T')) - now)/60000;
-      const h = Math.floor(diff/60), m = Math.floor(diff%60);
-      countdown = `<br><b>⏱ 다음 ${next.hl_code} ${h}시간 ${m}분 후</b>`;
-    }
-    return `<hr><b>🌊 물때 (${station.name}, ${dist.toFixed(0)}km)</b><br>${rows}${countdown}`;
-  } catch(e){ console.error(e); return `<hr><i>조석 API 오류</i>`; }
+  if(!KHOA_KEY) return `<hr><i>※ KHOA_KEY 설정 필요</i>`;
+  const {station, dist} = nearestStation(lat, lon);
+  if(!station) return '';
+  const today = await fetchTide(station.code, ymd(new Date()));
+  if(!today.length) return `<hr><i>조석 정보 없음</i>`;
+  
+  const rows = today.map(t => {
+    const level = parseFloat(t.predcTdlvVl);
+    // extrSe: "1"=고조(만조), "2"=고조, "3"=저조(간조), "4"=저조
+    const isHigh = (t.extrSe === '1' || t.extrSe === '2');
+    const time = (t.predcDt || '').substring(11, 16);
+    return `<span style="color:${isHigh?'#88ccff':'#ffcc88'}">${isHigh?'🔼 만조':'🔽 간조'} ${time} (${level.toFixed(0)}cm)</span>`;
+  }).join('<br>');
+  
+  const now = new Date();
+  const next = today.find(t => new Date((t.predcDt || '').replace(' ','T')) > now);
+  let countdown = '';
+  if(next){
+    const diff = (new Date(next.predcDt.replace(' ','T')) - now) / 60000;
+    const h = Math.floor(diff/60), m = Math.floor(diff%60);
+    const isHigh = (next.extrSe === '1' || next.extrSe === '2');
+    countdown = `<br><b>⏱ 다음 ${isHigh?'만조':'간조'} ${h}시간 ${m}분 후</b>`;
+  }
+  
+  return `<hr><b>🌊 물때 (${station.name}, ${dist.toFixed(0)}km)</b><br>${rows}${countdown}`;
 }
 
 /* ======================================================
