@@ -1221,7 +1221,8 @@ async function fetchTide(obsCode, dateStr){
   if (tideCache.has(key)) return tideCache.get(key);
   const cached = sessionStorage.getItem('tide_'+key);
   if (cached){ const data = JSON.parse(cached); tideCache.set(key, data); return data; }
-  const url = `${TIDE_API}?ServiceKey=${encodeURIComponent(KHOA_KEY)}&ObsCode=${obsCode}&Date=${dateStr}&ResultType=json`;
+  const khoaUrl = `${TIDE_API}?serviceKey=${KHOA_KEY}&pageNo=1&numOfRows=100&type=json&obsCode=${obsCode}&reqDate=${dateStr}`;
+  const url = `https://corsproxy.io/?${encodeURIComponent(khoaUrl)}`;
   const res = await fetch(url);
   const json = await res.json();
   const data = json?.result?.data || [];
