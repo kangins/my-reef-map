@@ -1,12 +1,10 @@
-// sw.js
-const CACHE_VERSION = 'reef-map-v1';
+const CACHE_VERSION = 'reef-map-v2';
 const TILE_CACHE    = 'reef-tiles-v1';
 
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.json',
-  './geojson/all_reefs.geojson',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css',
@@ -35,9 +33,10 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
 
-  // 지도 타일: Cache-First
+  // 1. 지도 타일: Cache-First
   if (url.hostname.includes('tile.openstreetmap.org') ||
       url.hostname.includes('tiles.openseamap.org')) {
     e.respondWith(
@@ -54,27 +53,52 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // 조석 API: Network-First
-  if (url.hostname.includes('apis.data.go.kr')) {
+  // 2. HTML / 루트: Network-First (항상 최신 코드)
+  if (e.request.mode === 'navigate' ||
+      url.pathname.endsWith('.html') ||
+      url.pathname === '/' ||
+      url.pathname.endsWith('/my-reef-map/')) {
     e.respondWith(
       fetch(e.request).then(res => {
-        const clone = res.clone();
-        caches.open(CACHE_VERSION).then(c => c.put(e.request, clone));
+        if (res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE_VERSION).then(c => c.put(e.request, clone));
+        }
+        return res;
+      }).catch(() => caches.match(e.request).then(hit => hit || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // 3. GeoJSON / 조석 API: Network-First
+  if (url.pathname.endsWith('.geojson') ||
+      url.hostname.includes('khoa.go.kr') ||
+      url.hostname.includes('apis.data.go.kr') ||
+      url.hostname.includes('workers.dev')) {
+    e.respondWith(
+      fetch(e.request).then(res => {
+        if (res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE_VERSION).then(c => c.put(e.request, clone));
+        }
         return res;
       }).catch(() => caches.match(e.request))
     );
     return;
   }
 
-  // 그 외: Cache-First
+  // 4. 그 외 (라이브러리 등): Cache-First
   e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
-      if (res.ok && e.request.method === 'GET') {
-        const clone = res.clone();
-        caches.open(CACHE_VERSION).then(c => c.put(e.request, clone));
-      }
-      return res;
-    }).catch(() => hit))
+    caches.match(e.request).then(hit => {
+      if (hit) return hit;
+      return fetch(e.request).then(res => {
+        if (res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE_VERSION).then(c => c.put(e.request, clone));
+        }
+        return res;
+      });
+    })
   );
 });
 
