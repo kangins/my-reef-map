@@ -1243,27 +1243,29 @@ async function fetchTide(obsCode, dateStr){
   const khoaUrl = `${TIDE_API}?serviceKey=${KHOA_KEY}&pageNo=1&numOfRows=100&type=json&obsCode=${obsCode}&reqDate=${dateStr}`;
   const url = `https://corsproxy.io/?${encodeURIComponent(khoaUrl)}`;
   
-  console.log('🌊 조석 API 호출:', khoaUrl);  // 추가
+  console.log('🌊 조석 API 호출:', khoaUrl);
   
   const res = await fetch(url);
-  const text = await res.text();  // 먼저 텍스트로 받기
-  
-  console.log('🌊 응답:', text.substring(0, 200));  // 추가
+  const text = await res.text();
+  console.log('🌊 응답:', text.substring(0, 300));
   
   let data = [];
   try {
     const json = JSON.parse(text);
-    data = json?.response?.body?.items?.item || json?.response?.body?.items || [];
+    data = json?.body?.items?.item || json?.response?.body?.items?.item || [];
     if (!Array.isArray(data)) data = [data];
   } catch(e) {
     console.error('🌊 JSON 파싱 실패:', text);
     return [];
   }
   
+  console.log('🌊 파싱된 데이터:', data);
+  
   tideCache.set(key, data);
   sessionStorage.setItem('tide_' + key, JSON.stringify(data));
   return data;
 }
+
 async function showTideFor(lat, lon){
   console.log('🎯 showTideFor 호출됨:', lat, lon);
   if(!KHOA_KEY) return `<hr><i>※ KHOA_KEY 설정 필요</i>`;
