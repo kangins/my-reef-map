@@ -1265,15 +1265,19 @@ async function fetchTide(obsCode, dateStr){
   return data;
 }
 async function showTideFor(lat, lon){
+  console.log('🎯 showTideFor 호출됨:', lat, lon);
   if(!KHOA_KEY) return `<hr><i>※ KHOA_KEY 설정 필요</i>`;
   const {station, dist} = nearestStation(lat, lon);
+  console.log('🎯 매칭된 관측소:', station, '거리:', dist);
   if(!station) return '';
+  
   const today = await fetchTide(station.code, ymd(new Date()));
+  console.log('📊 받은 데이터 개수:', today.length, '내용:', today);
+  
   if(!today.length) return `<hr><i>조석 정보 없음</i>`;
   
   const rows = today.map(t => {
     const level = parseFloat(t.predcTdlvVl);
-    // extrSe: "1"=고조(만조), "2"=고조, "3"=저조(간조), "4"=저조
     const isHigh = (t.extrSe === '1' || t.extrSe === '2');
     const time = (t.predcDt || '').substring(11, 16);
     return `<span style="color:${isHigh?'#88ccff':'#ffcc88'}">${isHigh?'🔼 만조':'🔽 간조'} ${time} (${level.toFixed(0)}cm)</span>`;
