@@ -1215,16 +1215,21 @@ function nearestStation(lat, lon){
 function ymd(d){ return d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0'); }
 const tideCache = new Map();
 async function fetchTide(obsCode, dateStr){
-  const key = obsCode+'_'+dateStr;
+  const key = obsCode + '_' + dateStr;
   if (tideCache.has(key)) return tideCache.get(key);
-  const cached = sessionStorage.getItem('tide_'+key);
-  if (cached){ const data = JSON.parse(cached); tideCache.set(key, data); return data; }
-  const url = `${TIDE_API}?ServiceKey=${encodeURIComponent(KHOA_KEY)}&ObsCode=${obsCode}&Date=${dateStr}&ResultType=json`;
+  const cached = sessionStorage.getItem('tide_' + key);
+  if (cached){ 
+    const data = JSON.parse(cached); 
+    tideCache.set(key, data); 
+    return data; 
+  }
+  const url = `${TIDE_API}?ServiceKey=${KHOA_KEY}&ObsCode=${obsCode}&Date=${dateStr}&ResultType=json`;
   const res = await fetch(url);
   const json = await res.json();
+  // KHOA 응답 구조: { result: { data: [...] } }
   const data = json?.result?.data || [];
   tideCache.set(key, data);
-  sessionStorage.setItem('tide_'+key, JSON.stringify(data));
+  sessionStorage.setItem('tide_' + key, JSON.stringify(data));
   return data;
 }
 async function showTideFor(lat, lon){
