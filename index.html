@@ -1,6 +1,54 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+<!-- Eruda 모바일 개발자 도구 -->
+<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+<script>
+  // URL에 ?eruda=1 이 있거나 localStorage에 저장된 경우 활성화
+  (function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const erudaEnabled = urlParams.get('eruda') === '1' || localStorage.getItem('eruda') === 'on';
+    
+    if (erudaEnabled) {
+      eruda.init({
+        tool: ['console', 'elements', 'network', 'resources', 'info', 'snippets', 'sources'],
+        useShadowDom: true,
+        autoScale: true,
+        defaults: {
+          displaySize: 50,
+          transparency: 0.9,
+          theme: 'Monokai Pro'
+        }
+      });
+      
+      // 유용한 스니펫 추가
+      eruda.add({
+        name: 'CustomTools',
+        init($el) {
+          this._$el = $el;
+        },
+        show() {
+          this._$el.html(`
+            <div style="padding:20px;color:#fff;">
+              <h3>🌊 어초 지도 디버그 도구</h3>
+              <button onclick="console.log('줌:', map.getZoom())" style="margin:5px;padding:10px;">현재 줌 확인</button>
+              <button onclick="console.log('수심 레이어:', depthContourLayer.getLayers().length + '개')" style="margin:5px;padding:10px;">수심 레이어 확인</button>
+              <button onclick="drawDepthContours()" style="margin:5px;padding:10px;">등심선 강제 실행</button>
+              <button onclick="console.log('캐시:', depthCache.size + '개')" style="margin:5px;padding:10px;">캐시 확인</button>
+              <button onclick="depthCache.clear(); console.log('캐시 삭제됨')" style="margin:5px;padding:10px;">캐시 초기화</button>
+              <button onclick="localStorage.removeItem('eruda'); location.reload()" style="margin:5px;padding:10px;background:#f44;">Eruda 끄기</button>
+            </div>
+          `);
+        },
+        hide() {}
+      });
+      
+      localStorage.setItem('eruda', 'on');
+      console.log('%c🔧 Eruda 활성화됨', 'color:#4CAF50;font-size:16px;font-weight:bold;');
+      console.log('끄려면: localStorage.removeItem("eruda") 후 새로고침');
+    }
+  })();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>🎣 전국 어초 지도</title>
