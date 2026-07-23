@@ -4,7 +4,6 @@
 <!-- Eruda 모바일 개발자 도구 -->
 <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
 <script>
-  // URL에 ?eruda=1 이 있거나 localStorage에 저장된 경우 활성화
   (function() {
     const urlParams = new URLSearchParams(window.location.search);
     const erudaEnabled = urlParams.get('eruda') === '1' || localStorage.getItem('eruda') === 'on';
@@ -21,21 +20,16 @@
         }
       });
       
-      // 유용한 스니펫 추가
       eruda.add({
         name: 'CustomTools',
-        init($el) {
-          this._$el = $el;
-        },
+        init($el) { this._$el = $el; },
         show() {
           this._$el.html(`
             <div style="padding:20px;color:#fff;">
               <h3>🌊 어초 지도 디버그 도구</h3>
               <button onclick="console.log('줌:', map.getZoom())" style="margin:5px;padding:10px;">현재 줌 확인</button>
-              <button onclick="console.log('수심 레이어:', depthContourLayer.getLayers().length + '개')" style="margin:5px;padding:10px;">수심 레이어 확인</button>
-              <button onclick="drawDepthContours()" style="margin:5px;padding:10px;">등심선 강제 실행</button>
-              <button onclick="console.log('캐시:', depthCache.size + '개')" style="margin:5px;padding:10px;">캐시 확인</button>
-              <button onclick="depthCache.clear(); console.log('캐시 삭제됨')" style="margin:5px;padding:10px;">캐시 초기화</button>
+              <button onclick="console.log('센터:', map.getCenter())" style="margin:5px;padding:10px;">지도 중심 확인</button>
+              <button onclick="console.log('레이어:', Object.keys(overlayLayers))" style="margin:5px;padding:10px;">레이어 목록</button>
               <button onclick="localStorage.removeItem('eruda'); location.reload()" style="margin:5px;padding:10px;background:#f44;">Eruda 끄기</button>
             </div>
           `);
@@ -45,7 +39,6 @@
       
       localStorage.setItem('eruda', 'on');
       console.log('%c🔧 Eruda 활성화됨', 'color:#4CAF50;font-size:16px;font-weight:bold;');
-      console.log('끄려면: localStorage.removeItem("eruda") 후 새로고침');
     }
   })();
 </script>
@@ -73,10 +66,6 @@
 <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/lunar-javascript@1.6.9/dist/lunar.js"></script>
 
-<!-- 🆕 등심선 그리기용 -->
-<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
-<script src="https://cdn.jsdelivr.net/npm/d3-contour@4"></script>
-
 <style>
   :root {
     --app-font-scale: 1;
@@ -92,17 +81,17 @@
   }
   #map { width:100%; height:100%; touch-action:none; }
 
-  /* 🆕 글자 크기 조절 시스템 */
+  /* 글자 크기 조절 시스템 */
   #panel, #info, .leaflet-popup-content, .leaflet-control-layers,
   .depth-legend, #modalBox, #nav {
     font-size: calc(13px * var(--app-font-scale));
   }
   #info b, #info small { font-size: inherit; }
 
-  /* 🆕 글자 크기 조절 버튼 */
+  /* ⭐ 글자 크기 조절 버튼 - 좌측 하단으로 이동 */
   #font-size-control {
     position:fixed;
-    top:90px;
+    bottom:90px;
     left:10px;
     z-index:1000;
     display:flex;
@@ -115,7 +104,7 @@
     box-shadow:0 1px 5px rgba(0,0,0,0.3);
   }
   #font-size-control button {
-    width:30px; height:30px;
+    width:34px; height:34px;
     background:#fff;
     color:#333;
     border:1px solid #ccc;
@@ -143,6 +132,36 @@
   }
   body.night #font-size-display { color:#fcc; }
 
+  /* ⭐ 레이어 컨트롤 위치 이동 - 좌측 (현위치 버튼 아래) */
+  .leaflet-top.leaflet-left {
+    top: 10px;
+  }
+  .leaflet-control-layers {
+    background:rgba(255,255,255,0.95) !important;
+    border-radius:8px !important;
+    margin-top: 10px !important;
+    box-shadow:0 1px 5px rgba(0,0,0,0.3) !important;
+    border:2px solid rgba(0,0,0,0.2) !important;
+  }
+  .leaflet-control-layers-expanded {
+    padding:8px 10px !important;
+    min-width: 180px;
+  }
+  .leaflet-control-layers-expanded label {
+    padding:5px 0 !important;
+    display:block !important;
+    font-size: calc(12px * var(--app-font-scale)) !important;
+  }
+  .leaflet-control-layers-separator {
+    margin: 6px 0 !important;
+    border-top: 1px solid #ccc !important;
+  }
+  body.night .leaflet-control-layers {
+    background:rgba(40,0,0,0.92) !important;
+    color:#fcc !important;
+    border-color:#600 !important;
+  }
+
   /* ===================== 스플래시 스크린 ===================== */
   #splash {
     position:fixed; top:0; left:0; width:100%; height:100%;
@@ -153,62 +172,41 @@
     transition:opacity 0.8s ease, visibility 0.8s ease;
   }
   #splash.hide {
-    opacity:0;
-    visibility:hidden;
-    pointer-events:none;
+    opacity:0; visibility:hidden; pointer-events:none;
   }
   #splash img {
-    max-width:100%;
-    max-height:100%;
-    width:auto;
-    height:auto;
-    object-fit:contain;
-    display:block;
-    -webkit-user-drag:none;
-    user-select:none;
+    max-width:100%; max-height:100%; width:auto; height:auto;
+    object-fit:contain; display:block;
+    -webkit-user-drag:none; user-select:none;
   }
   #splashLoader {
-    position:absolute;
-    bottom:40px; left:0; right:0;
-    text-align:center;
-    color:#fff;
-    font-size:13px;
-    text-shadow:0 1px 4px rgba(0,0,0,0.9);
-    pointer-events:none;
+    position:absolute; bottom:40px; left:0; right:0;
+    text-align:center; color:#fff; font-size:13px;
+    text-shadow:0 1px 4px rgba(0,0,0,0.9); pointer-events:none;
   }
   #splashLoader .spinner {
-    display:inline-block;
-    width:24px; height:24px;
+    display:inline-block; width:24px; height:24px;
     border:3px solid rgba(255,255,255,0.3);
-    border-top:3px solid #ffcc44;
-    border-radius:50%;
+    border-top:3px solid #ffcc44; border-radius:50%;
     animation:spin 0.9s linear infinite;
-    vertical-align:middle;
-    margin-right:8px;
+    vertical-align:middle; margin-right:8px;
   }
   @keyframes spin { to { transform:rotate(360deg); } }
 
   #splashSkip {
-    position:absolute;
-    top:20px; right:20px;
-    background:rgba(0,0,0,0.5);
-    color:#fff;
+    position:absolute; top:20px; right:20px;
+    background:rgba(0,0,0,0.5); color:#fff;
     border:1px solid rgba(255,255,255,0.4);
-    border-radius:20px;
-    padding:6px 14px;
-    font-size:12px;
-    cursor:pointer;
-    z-index:100000;
+    border-radius:20px; padding:6px 14px;
+    font-size:12px; cursor:pointer; z-index:100000;
   }
   #splashSkip:hover { background:rgba(0,0,0,0.8); }
 
   /* ===================== SOS 커스텀 모달 ===================== */
   #sosModal {
     position:fixed; top:0; left:0; right:0; bottom:0;
-    z-index:99998;
-    background:rgba(0,0,0,0.75);
-    display:none;
-    align-items:center; justify-content:center;
+    z-index:99998; background:rgba(0,0,0,0.75);
+    display:none; align-items:center; justify-content:center;
     animation:sosFadeIn 0.2s ease;
   }
   #sosModal.show { display:flex; }
@@ -216,54 +214,40 @@
 
   #sosBox {
     background:linear-gradient(135deg, #c62828, #8b0000);
-    color:#fff;
-    border-radius:16px;
-    padding:24px 20px;
-    max-width:340px;
-    width:88%;
+    color:#fff; border-radius:16px; padding:24px 20px;
+    max-width:340px; width:88%;
     box-shadow:0 8px 40px rgba(255,0,0,0.5), 0 0 0 3px #ffcc44;
-    text-align:center;
-    animation:sosZoomIn 0.3s ease;
+    text-align:center; animation:sosZoomIn 0.3s ease;
   }
   @keyframes sosZoomIn {
     from{ transform:scale(0.7); opacity:0; }
-    to  { transform:scale(1);   opacity:1; }
+    to  { transform:scale(1); opacity:1; }
   }
   #sosBox .icon {
-    font-size:52px;
-    margin-bottom:8px;
+    font-size:52px; margin-bottom:8px;
     animation:sosBlink 0.8s infinite;
   }
   @keyframes sosBlink { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
   #sosBox h2 {
-    margin:0 0 12px;
-    font-size:22px;
-    letter-spacing:2px;
+    margin:0 0 12px; font-size:22px; letter-spacing:2px;
     text-shadow:0 2px 4px rgba(0,0,0,0.5);
   }
   #sosBox .coord {
-    background:rgba(0,0,0,0.35);
-    padding:12px;
-    border-radius:8px;
-    margin:12px 0;
-    font-family:'Courier New', monospace;
-    font-size:14px;
-    word-break:break-all;
+    background:rgba(0,0,0,0.35); padding:12px; border-radius:8px;
+    margin:12px 0; font-family:'Courier New', monospace;
+    font-size:14px; word-break:break-all;
     border:1px dashed rgba(255,255,255,0.3);
   }
-  #sosBox .coord b { color:#ffcc44; display:block; margin-bottom:4px; font-family:inherit; font-size:11px; letter-spacing:1px; }
-  #sosBox .copied {
-    font-size:11px; color:#88ffaa; margin-top:4px;
+  #sosBox .coord b {
+    color:#ffcc44; display:block; margin-bottom:4px;
+    font-family:inherit; font-size:11px; letter-spacing:1px;
   }
+  #sosBox .copied { font-size:11px; color:#88ffaa; margin-top:4px; }
   #sosBox .warn {
-    font-size:12px;
-    color:#ffcc44;
-    margin:10px 0 16px;
-    line-height:1.5;
+    font-size:12px; color:#ffcc44;
+    margin:10px 0 16px; line-height:1.5;
   }
-  #sosBox .btns {
-    display:flex; gap:10px; margin-top:8px;
-  }
+  #sosBox .btns { display:flex; gap:10px; margin-top:8px; }
   #sosBox button {
     flex:1; padding:14px 8px; border:none; border-radius:10px;
     font-size:15px; font-weight:bold; cursor:pointer;
@@ -310,9 +294,10 @@
     font-size:20px; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.3);
   }
 
+  /* ⭐ 경로 지우기 버튼 - 좌측 중앙 */
   #clearBtn {
-    position:absolute; top:130px; left:10px; z-index:1000;
-    width:36px; height:36px; border-radius:6px; font-size:18px;
+    position:absolute; bottom:180px; left:10px; z-index:1000;
+    width:38px; height:38px; border-radius:6px; font-size:18px;
     background:#fff; border:2px solid rgba(0,0,0,0.2); cursor:pointer;
     box-shadow:0 1px 5px rgba(0,0,0,0.3); display:none;
     padding:0; line-height:32px; text-align:center;
@@ -321,11 +306,12 @@
   #clearBtn.show { display:block; }
 
   #info {
-    position:absolute; bottom:80px; left:10px; z-index:1000;
+    position:absolute; bottom:80px; left:60px; right:10px; z-index:1000;
     background:rgba(0,40,80,0.92); color:#fff; padding:12px 14px;
-    border-radius:10px; display:none; max-width:330px; line-height:1.5;
+    border-radius:10px; display:none; max-width:400px; line-height:1.5;
     box-shadow:0 2px 10px rgba(0,0,0,0.4);
     max-height:70vh; overflow-y:auto;
+    margin: 0 auto;
   }
   #info button {
     background:#ff9500; color:#fff; border:none; padding:6px 10px;
@@ -335,34 +321,21 @@
   #info button.close { background:#666; float:right; padding:2px 8px; }
   #info b { color:#ffe066; }
   #info hr { border:none; border-top:1px solid rgba(255,255,255,0.3); margin:8px 0; }
-
   #info .fishing-score {
-    font-size:1.15em;
-    font-weight:bold;
-    margin:6px 0;
-    padding:4px 0;
+    font-size:1.15em; font-weight:bold; margin:6px 0; padding:4px 0;
   }
   #info .detail-toggle {
-    display:inline-block;
-    color:#88ccff;
-    text-decoration:none;
-    margin-top:6px;
-    cursor:pointer;
-    font-size:0.95em;
-    user-select:none;
+    display:inline-block; color:#88ccff; text-decoration:none;
+    margin-top:6px; cursor:pointer; font-size:0.95em; user-select:none;
   }
   #info .detail-toggle:hover { color:#aaddff; }
   #info .detail-panel {
-    margin-top:8px;
-    padding-top:8px;
-    border-top:1px dashed #556;
+    margin-top:8px; padding-top:8px; border-top:1px dashed #556;
   }
   #info .detail-panel > div { margin-bottom:2px; }
   #info .section-title {
-    color:#ffcc44;
-    font-weight:bold;
-    margin-top:8px !important;
-    margin-bottom:2px !important;
+    color:#ffcc44; font-weight:bold;
+    margin-top:8px !important; margin-bottom:2px !important;
   }
 
   #sos {
@@ -373,10 +346,11 @@
   }
 
   #nav {
-    position:absolute; bottom:80px; left:10px; right:80px; z-index:1500;
+    position:absolute; bottom:80px; left:60px; right:80px; z-index:1500;
     background:linear-gradient(135deg, rgba(0,30,60,0.95), rgba(0,60,120,0.95));
     color:#fff; padding:14px 16px; border-radius:12px; display:none;
     box-shadow:0 4px 15px rgba(0,0,0,0.5); border:2px solid #ffcc44;
+    max-width:400px; margin: 0 auto;
   }
   #nav.show { display:block; animation:slideUp 0.3s; }
   @keyframes slideUp { from{transform:translateY(20px);opacity:0;} to{transform:translateY(0);opacity:1;} }
@@ -456,7 +430,7 @@
   }
   @keyframes shake { 0%,100%{transform:translateX(-50%);} 25%{transform:translateX(-52%);} 75%{transform:translateX(-48%);} }
 
-  /* 🆕 수심 등심선 범례 */
+  /* 수심 범례 */
   .depth-legend {
     background:rgba(30,30,40,0.9);
     color:#fff;
@@ -464,25 +438,13 @@
     border-radius:6px;
     line-height:1.5;
     border:1px solid #556;
+    font-size: calc(11px * var(--app-font-scale));
   }
   .depth-legend b {
     display:block;
     margin-bottom:4px;
     font-size:1.05em;
     color:#ffcc44;
-  }
-
-  /* 🆕 레이어 컨트롤 스타일 */
-  .leaflet-control-layers {
-    background:rgba(255,255,255,0.95) !important;
-    border-radius:8px !important;
-  }
-  .leaflet-control-layers-expanded label {
-    padding:4px 0 !important;
-  }
-  body.night .leaflet-control-layers {
-    background:rgba(40,0,0,0.92) !important;
-    color:#fcc !important;
   }
 
   body.night #map { filter:invert(0.9) hue-rotate(180deg) brightness(0.95) saturate(0.7); }
@@ -499,13 +461,16 @@
     #panel.hidden { display:none; }
     #nav .stat .value { font-size:1.3em; }
     #compass { width:60px; height:60px; }
-    #font-size-control { top:80px; }
+    #info { left:60px; right:10px; }
+    #nav { left:60px; right:80px; }
+    #font-size-control { bottom:90px; }
+    #clearBtn { bottom:180px; }
   }
 </style>
 </head>
 <body>
 
-<!-- ========== 스플래시 스크린 ========== -->
+<!-- 스플래시 -->
 <div id="splash">
   <img id="splashImg" src="splash.png" alt="동해카약보트 덕후피싱">
   <button id="splashSkip" onclick="hideSplash()">건너뛰기 ✕</button>
@@ -514,7 +479,7 @@
   </div>
 </div>
 
-<!-- ========== SOS 커스텀 확인 모달 ========== -->
+<!-- SOS 모달 -->
 <div id="sosModal" onclick="if(event.target.id==='sosModal') closeSosModal()">
   <div id="sosBox">
     <div class="icon">🚨</div>
@@ -543,7 +508,7 @@
 <button id="toggleBtn" onclick="togglePanel()">≡</button>
 <button id="clearBtn" onclick="clearRoute()" title="경로/직선 지우기">🚫</button>
 
-<!-- 🆕 글자 크기 조절 -->
+<!-- 글자 크기 조절 (좌측 하단) -->
 <div id="font-size-control">
   <button onclick="changeFontSize(0.1)" title="글자 크게">A+</button>
   <div id="font-size-display">100%</div>
@@ -626,7 +591,7 @@
 
 <script>
 /* ======================================================
-   0. 스플래시 스크린 제어
+   0. 스플래시 스크린
 ====================================================== */
 const SPLASH_MIN_MS = 2000;
 const SPLASH_MAX_MS = 6000;
@@ -663,7 +628,7 @@ document.getElementById('splash').addEventListener('click', function(e){
 });
 
 /* ======================================================
-   🆕 글자 크기 조절
+   글자 크기 조절
 ====================================================== */
 function changeFontSize(delta) {
   const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-font-scale')) || 1;
@@ -689,22 +654,20 @@ function changeFontSize(delta) {
 const KHOA_KEY = 'c282fed952f9ab142024c8e037b78de6fb22d5df62968e5907b2983482ecc830';
 const TIDE_API = 'https://apis.data.go.kr/1192136/tideFcstHghLw/GetTideFcstHghLwApiService';
 
-/* 🆕 수심 API */
-const DEPTH_API = 'https://apis.data.go.kr/1192136/WaterDepthApiService/getWaterDepthApi';
-const DEPTH_KEY = KHOA_KEY;
-const DEPTH_THRESHOLDS = [2, 5, 10, 20, 30, 50, 100, 200, 500, 1000];
-
 /* ======================================================
-   1. 지도 초기화 (🆕 위성지도 + 해도 오버레이)
+   1. 지도 초기화
 ====================================================== */
-const map = L.map('map', { zoomControl:true }).setView([36.5, 127.8], 7);
+const map = L.map('map', { 
+  zoomControl:true,
+  attributionControl: true
+}).setView([36.5, 127.8], 7);
 
-// 일반 지도
+// 일반 지도 (OSM)
 const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution:'© OpenStreetMap', maxZoom:19
 }).addTo(map);
 
-// 🆕 위성 지도
+// 위성 지도 (Esri)
 const satelliteLayer = L.tileLayer(
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
   { maxZoom:19, attribution:'© Esri, Maxar' }
@@ -715,14 +678,51 @@ const satelliteLabels = L.tileLayer(
 );
 const satelliteWithLabels = L.layerGroup([satelliteLayer, satelliteLabels]);
 
-// 🆕 OpenSeaMap 해도
+// ⭐ GEBCO 수심 등심선 (프록시 불필요, 즉시 작동)
+const gebcoContourLayer = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
+  layers: 'gebco_latest_2',
+  format: 'image/png',
+  transparent: true,
+  version: '1.1.1',
+  attribution: '© GEBCO',
+  opacity: 0.75,
+  maxZoom: 18
+});
+
+// ⭐ GEBCO 수심 컬러맵 (수심 시각화)
+const gebcoBathymetryLayer = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
+  layers: 'GEBCO_LATEST',
+  format: 'image/png',
+  transparent: true,
+  version: '1.1.1',
+  attribution: '© GEBCO',
+  opacity: 0.6,
+  maxZoom: 18
+});
+
+// ⭐ EMODnet 상세 수심 (한국 근해 커버)
+const emodnetLayer = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
+  layers: 'emodnet:mean_atlas_land',
+  format: 'image/png',
+  transparent: true,
+  attribution: '© EMODnet Bathymetry',
+  opacity: 0.6,
+  maxZoom: 18
+});
+
+// OpenSeaMap 해도
 const openSeaMapLayer = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
   maxZoom:18, attribution:'© OpenSeaMap', opacity:0.9
 });
 
-// 🆕 등심선 레이어 (초기 빈 상태)
-const depthContourLayer = L.layerGroup();
-let depthCache = new Map();
+// 오버레이 레이어 참조 (Eruda 디버그용)
+const overlayLayers = {
+  gebcoContour: gebcoContourLayer,
+  gebcoBathy: gebcoBathymetryLayer,
+  emodnet: emodnetLayer,
+  openSeaMap: openSeaMapLayer
+};
+
 let depthLegendControl = null;
 
 // 야간모드
@@ -793,7 +793,7 @@ async function loadAllReefs(){
     group.addTo(map);
   });
   buildLayerUI();
-  setupLayerControl(); // 🆕 지도 완료 후 레이어 컨트롤 등록
+  setupLayerControl();
 }
 
 function buildLayerUI(){
@@ -811,7 +811,7 @@ function buildLayerUI(){
 }
 
 /* ======================================================
-   🆕 레이어 컨트롤 설정
+   ⭐ 레이어 컨트롤 (좌측 상단, 현위치 아래)
 ====================================================== */
 function setupLayerControl(){
   const baseMaps = {
@@ -819,21 +819,19 @@ function setupLayerControl(){
     '🛰️ 위성 지도': satelliteWithLabels
   };
   const overlayMaps = {
-    '📏 수심 등심선': depthContourLayer,
+    '📏 GEBCO 등심선': gebcoContourLayer,
+    '🎨 GEBCO 수심지도': gebcoBathymetryLayer,
+    '🗺️ EMODnet 수심': emodnetLayer,
     '⚓ 해도 (OpenSeaMap)': openSeaMapLayer
   };
   L.control.layers(baseMaps, overlayMaps, {
-    position:'topright',
+    position:'topleft',   // ⭐ 좌측으로 이동
     collapsed:true
   }).addTo(map);
 
-  // 이벤트 등록
-  map.on('moveend zoomend', () => {
-    if (map.hasLayer(depthContourLayer)) scheduleDepthRedraw();
-  });
+  // 등심선/수심지도 켜면 범례 표시
   map.on('overlayadd', e => {
-    if (e.name === '📏 수심 등심선') {
-      drawDepthContours();
+    if (e.name.includes('GEBCO') || e.name.includes('EMODnet')) {
       if (!depthLegendControl) {
         depthLegendControl = createDepthLegend();
         depthLegendControl.addTo(map);
@@ -841,14 +839,36 @@ function setupLayerControl(){
     }
   });
   map.on('overlayremove', e => {
-    if (e.name === '📏 수심 등심선') {
-      depthContourLayer.clearLayers();
-      if (depthLegendControl) {
+    if (e.name.includes('GEBCO') || e.name.includes('EMODnet')) {
+      // 다른 수심 레이어가 남아있는지 확인
+      const stillHasDepth = 
+        map.hasLayer(gebcoContourLayer) || 
+        map.hasLayer(gebcoBathymetryLayer) || 
+        map.hasLayer(emodnetLayer);
+      if (!stillHasDepth && depthLegendControl) {
         map.removeControl(depthLegendControl);
         depthLegendControl = null;
       }
     }
   });
+}
+
+function createDepthLegend() {
+  const legend = L.control({ position: 'bottomright' });
+  legend.onAdd = function() {
+    const div = L.DomUtil.create('div', 'depth-legend');
+    div.innerHTML = `
+      <b>🌊 수심 (m)</b>
+      <span style="color:#a8e0f7">■</span> 0-50<br>
+      <span style="color:#66c2e0">■</span> 50-200<br>
+      <span style="color:#3a91c5">■</span> 200-500<br>
+      <span style="color:#1e5f9c">■</span> 500-1000<br>
+      <span style="color:#0f3f7a">■</span> 1000-2000<br>
+      <span style="color:#052258">■</span> 2000+
+    `;
+    return div;
+  };
+  return legend;
 }
 
 /* ======================================================
@@ -1519,7 +1539,6 @@ async function fetchTide(obsCode, dateStr){
   }
 }
 
-/* ---------- 물때 (서해식 8물때) ---------- */
 function getMulddae(date) {
   let lunarDay;
   try {
@@ -1554,12 +1573,17 @@ function getMulddae(date) {
   return table[idx];
 }
 
-/* ---------- 일출/일몰/월/달 위상 ---------- */
 function getSunMoon(date, lat, lon) {
   if (typeof SunCalc === 'undefined') return null;
   try {
     const sun = SunCalc.getTimes(date, lat, lon);
-    const moon = SunCalc.getMoonTimes(date, lat, lon);
+    let moon = SunCalc.getMoonTimes(date, lat, lon);
+    // 월몰이 없으면 다음날까지 조회
+    if (!moon.set) {
+      const nextDay = new Date(date.getTime() + 86400000);
+      const nextMoon = SunCalc.getMoonTimes(nextDay, lat, lon);
+      if (nextMoon.set) moon.set = nextMoon.set;
+    }
     const phase = SunCalc.getMoonIllumination(date);
 
     const phases = [
@@ -1589,7 +1613,6 @@ function getSunMoon(date, lat, lon) {
   }
 }
 
-/* ---------- 조과지수 (0~10) ---------- */
 function calcFishingScore(mulddae, tideData, sunMoon, now) {
   let score = 0;
   const mulddaeScore = Math.min(3, mulddae.power - 1);
@@ -1631,7 +1654,6 @@ function calcFishingScore(mulddae, tideData, sunMoon, now) {
   return Math.min(10, score);
 }
 
-/* ---------- 유리 시간대 계산 ---------- */
 function getBestTimes(tideData, sunMoon) {
   const times = [];
   const fmt = d => {
@@ -1680,7 +1702,6 @@ function getBestTimes(tideData, sunMoon) {
   return times.filter(t => t.start && t.end).sort((a,b) => a.sortKey - b.sortKey);
 }
 
-/* ---------- 통합 낚시 정보 표시 ---------- */
 async function showTideFor(lat, lon){
   const {station, dist} = nearestStation(lat, lon);
   if(!station) return '';
@@ -1764,211 +1785,7 @@ function toggleTideDetail(el){
 }
 
 /* ======================================================
-   🆕 16. 수심 등심선 시스템
-====================================================== */
-function getDepthColor(depth) {
-  if (depth < 5)   return '#ff4444';
-  if (depth < 10)  return '#ff8844';
-  if (depth < 20)  return '#ffcc44';
-  if (depth < 30)  return '#88ccff';
-  if (depth < 50)  return '#4488ff';
-  if (depth < 100) return '#2266cc';
-  if (depth < 200) return '#003399';
-  if (depth < 500) return '#001155';
-  return '#000833';
-}
-
-async function fetchDepthData(ymin, ymax, xmin, xmax) {
-  const cacheKey = `${ymin.toFixed(3)}_${ymax.toFixed(3)}_${xmin.toFixed(3)}_${xmax.toFixed(3)}`;
-  if (depthCache.has(cacheKey)) return depthCache.get(cacheKey);
-
-  const rangeArea = (ymax - ymin) * (xmax - xmin);
-  if (rangeArea > 0.5) {
-    console.log('🌊 범위가 너무 넓음, 요청 생략');
-    return [];
-  }
-
-  const url = `${DEPTH_API}?serviceKey=${DEPTH_KEY}&type=json&ymin=${ymin}&ymax=${ymax}&xmin=${xmin}&xmax=${xmax}&pageNo=1&numOfRows=3000`;
-  const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-
-  console.log('🌊 수심 API 호출 중...');
-
-  try {
-    const res = await fetch(proxyUrl);
-    const json = await res.json();
-
-    const resultCode = json?.header?.resultCode;
-    if (resultCode !== '0' && resultCode !== '00') {
-      console.warn('🌊 API 오류:', json?.header?.resultMsg);
-      return [];
-    }
-
-    const items = json?.body?.items?.item || [];
-    const points = Array.isArray(items) ? items : [items];
-    const total = json?.body?.totalCount || 0;
-
-    const parsed = points
-      .map(p => ({
-        lat: parseFloat(p.lat),
-        lon: parseFloat(p.lon),
-        depth: parseFloat(p.dpwt)
-      }))
-      .filter(p => !isNaN(p.lat) && !isNaN(p.lon) && !isNaN(p.depth));
-
-    depthCache.set(cacheKey, parsed);
-    console.log(`🌊 수심 데이터 ${parsed.length}/${total}개 로드`);
-    return parsed;
-  } catch (e) {
-    console.error('수심 API 오류:', e);
-    return [];
-  }
-}
-
-function interpolateGrid(points, gridSize, minLat, maxLat, minLon, maxLon) {
-  const grid = new Array(gridSize * gridSize).fill(0);
-  const latStep = (maxLat - minLat) / gridSize;
-  const lonStep = (maxLon - minLon) / gridSize;
-
-  for (let i = 0; i < gridSize; i++) {
-    for (let j = 0; j < gridSize; j++) {
-      const cellLat = minLat + (i + 0.5) * latStep;
-      const cellLon = minLon + (j + 0.5) * lonStep;
-
-      let sumWeight = 0;
-      let sumValue = 0;
-      let nearestVal = null;
-      let nearestDist = Infinity;
-
-      points.forEach(p => {
-        const dLat = p.lat - cellLat;
-        const dLon = p.lon - cellLon;
-        const dist2 = dLat * dLat + dLon * dLon;
-        if (dist2 < nearestDist) {
-          nearestDist = dist2;
-          nearestVal = p.depth;
-        }
-        if (dist2 < 0.00001) {
-          sumWeight = 1;
-          sumValue = p.depth;
-          return;
-        }
-        const w = 1 / dist2;
-        sumWeight += w;
-        sumValue += w * p.depth;
-      });
-
-      grid[i * gridSize + j] = sumWeight > 0 ? sumValue / sumWeight : (nearestVal || 0);
-    }
-  }
-  return grid;
-}
-
-async function drawDepthContours() {
-  const zoom = map.getZoom();
-
-  if (zoom < 9) {
-    depthContourLayer.clearLayers();
-    return;
-  }
-
-  const bounds = map.getBounds();
-  const ymin = bounds.getSouth();
-  const ymax = bounds.getNorth();
-  const xmin = bounds.getWest();
-  const xmax = bounds.getEast();
-
-  if ((ymax - ymin) > 2 || (xmax - xmin) > 2) {
-    depthContourLayer.clearLayers();
-    return;
-  }
-
-  const points = await fetchDepthData(ymin, ymax, xmin, xmax);
-  if (points.length < 4) {
-    depthContourLayer.clearLayers();
-    return;
-  }
-
-  const gridSize = zoom >= 12 ? 80 : zoom >= 10 ? 60 : 40;
-  const grid = interpolateGrid(points, gridSize, ymin, ymax, xmin, xmax);
-
-  const maxDepth = Math.max(...grid);
-  const thresholds = DEPTH_THRESHOLDS.filter(t => t < maxDepth);
-  if (thresholds.length === 0) {
-    depthContourLayer.clearLayers();
-    return;
-  }
-
-  const contours = d3.contours()
-    .size([gridSize, gridSize])
-    .thresholds(thresholds)(grid);
-
-  depthContourLayer.clearLayers();
-
-  const latStep = (ymax - ymin) / gridSize;
-  const lonStep = (xmax - xmin) / gridSize;
-
-  contours.forEach(contour => {
-    const transformedCoords = contour.coordinates.map(polygon =>
-      polygon.map(ring =>
-        ring.map(([x, y]) => [
-          xmin + x * lonStep,
-          ymin + y * latStep
-        ])
-      )
-    );
-
-    const geojson = {
-      type: 'Feature',
-      geometry: {
-        type: 'MultiPolygon',
-        coordinates: transformedCoords
-      },
-      properties: { depth: contour.value }
-    };
-
-    const color = getDepthColor(contour.value);
-    L.geoJSON(geojson, {
-      style: {
-        color: color,
-        weight: 1.2,
-        fillOpacity: 0.15,
-        fillColor: color
-      }
-    }).bindTooltip(`${contour.value}m`, { sticky: true })
-      .addTo(depthContourLayer);
-  });
-
-  console.log(`🌊 등심선 ${contours.length}개 표시`);
-}
-
-let depthDrawTimer;
-function scheduleDepthRedraw() {
-  clearTimeout(depthDrawTimer);
-  depthDrawTimer = setTimeout(drawDepthContours, 800);
-}
-
-function createDepthLegend() {
-  const legend = L.control({ position: 'bottomright' });
-  legend.onAdd = function() {
-    const div = L.DomUtil.create('div', 'depth-legend');
-    div.innerHTML = `
-      <b>🌊 수심 (m)</b>
-      <span style="color:#ff4444">■</span> 0-5<br>
-      <span style="color:#ff8844">■</span> 5-10<br>
-      <span style="color:#ffcc44">■</span> 10-20<br>
-      <span style="color:#88ccff">■</span> 20-30<br>
-      <span style="color:#4488ff">■</span> 30-50<br>
-      <span style="color:#2266cc">■</span> 50-100<br>
-      <span style="color:#003399">■</span> 100-200<br>
-      <span style="color:#001155">■</span> 200+
-    `;
-    return div;
-  };
-  return legend;
-}
-
-/* ======================================================
-   17. SOS - 커스텀 확인 모달 (119 단일)
+   16. SOS
 ====================================================== */
 function sos(){
   const modal = document.getElementById('sosModal');
@@ -2011,12 +1828,12 @@ function callEmergency(){
 }
 
 /* ======================================================
-   18. 패널 토글
+   17. 패널 토글
 ====================================================== */
 function togglePanel(){ document.getElementById('panel').classList.toggle('hidden'); }
 
 /* ======================================================
-   19. PWA 서비스 워커
+   18. PWA
 ====================================================== */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -2027,7 +1844,7 @@ if ('serviceWorker' in navigator) {
 }
 
 /* ======================================================
-   20. 오프라인 타일
+   19. 오프라인 타일
 ====================================================== */
 function latLngToTile(lat, lon, z){
   const n = 2 ** z;
@@ -2056,7 +1873,7 @@ async function precacheCurrentView(maxZoom = 14){
 }
 
 /* ======================================================
-   21. 시작
+   20. 시작
 ====================================================== */
 loadAllReefs().then(() => {
   redrawWaypointLine();
