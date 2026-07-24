@@ -659,7 +659,8 @@ const TIDE_API = 'https://apis.data.go.kr/1192136/tideFcstHghLw/GetTideFcstHghLw
 ====================================================== */
 const map = L.map('map', { 
   zoomControl:true,
-  attributionControl: true
+  attributionControl: true,
+  preferCanvas: true
 }).setView([36.5, 127.8], 7);
 
 // 일반 지도 (OSM)
@@ -678,37 +679,75 @@ const satelliteLabels = L.tileLayer(
 );
 const satelliteWithLabels = L.layerGroup([satelliteLayer, satelliteLabels]);
 
-// ⭐ GEBCO 수심 등심선 (프록시 불필요, 즉시 작동)
-const gebcoContourLayer = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
-  layers: 'gebco_latest_2',
-  format: 'image/png',
-  transparent: true,
-  version: '1.1.1',
-  attribution: '© GEBCO',
-  opacity: 0.75,
-  maxZoom: 18
+// ⭐ cleaned.json 등심선 레이어 (geojson/cleaned.json)
+const depthContourRenderer = L.canvas({ padding: 0.5 });
+let depthLegendControl = null;
+let depthLegendVisible = false;
+let cleanedContourLoaded = false;
+
+function getDepthContourColor(depth){
+  if (depth >= 1000) return '#4b0082';
+  if (depth >= 500) return '#6a0dad';
+  if (depth >= 300) return '#7b1fa2';
+  if (depth >= 200) return '#8e24aa';
+  if (depth >= 100) return '#ab47bc';
+  if (depth >= 50) return '#1e88e5';
+  if (depth >= 30) return '#039be5';
+  if (depth >= 20) return '#00acc1';
+  if (depth >= 15) return '#00897b';
+  if (depth >= 10) return '#43a047';
+  if (depth >= 8) return '#7cb342';
+  if (depth >= 6) return '#c0ca33';
+  if (depth >= 4) return '#fdd835';
+  if (depth >= 2) return '#fb8c00';
+  return '#e53935';
+}
+
+function getDepthContourWeight(depth){
+  if (depth >= 100) return 2.1;
+  if (depth >= 30) return 1.7;
+  if (depth >= 10) return 1.4;
+  return 1.1;
+}
+
+function styleDepthContour(feature){
+  const depth = Number(feature?.properties?.HSL ?? 0);
+  return {
+    renderer: depthContourRenderer,
+    color: getDepthContourColor(depth),
+    weight: getDepthContourWeight(depth),
+    opacity: 0.9,
+    lineJoin: 'round'
+  };
+}
+
+function onEachDepthContour(feature, layer){
+  const props = feature.properties || {};
+  const depth = Number(props.HSL ?? 0);
+  layer.bindPopup(`
+    <b>🌊 등심선</b><br>
+    수심: <b>${depth}m</b><br>
+    레이어: ${props.LAYNAM || '-'}<br>
+    출처: ${props.SORIND || '-'}
+  `);
+}
+
+const cleanedContourLayer = L.geoJSON(null, {
+  style: styleDepthContour,
+  onEachFeature: onEachDepthContour
 });
 
-// ⭐ GEBCO 수심 컬러맵 (수심 시각화)
-const gebcoBathymetryLayer = L.tileLayer.wms('https://wms.gebco.net/mapserv?', {
-  layers: 'GEBCO_LATEST',
-  format: 'image/png',
-  transparent: true,
-  version: '1.1.1',
-  attribution: '© GEBCO',
-  opacity: 0.6,
-  maxZoom: 18
-});
-
-// ⭐ EMODnet 상세 수심 (한국 근해 커버)
-const emodnetLayer = L.tileLayer.wms('https://ows.emodnet-bathymetry.eu/wms', {
-  layers: 'emodnet:mean_atlas_land',
-  format: 'image/png',
-  transparent: true,
-  attribution: '© EMODnet Bathymetry',
-  opacity: 0.6,
-  maxZoom: 18
-});
+async function loadCleanedContours(){
+  const res = await fetch('./geojson/cleaned.json');
+  if (!res.ok) throw new Error('cleaned.json HTTP ' + res.status);
+  const geo = await res.json();
+  if (!geo || !Array.isArray(geo.features)) {
+    throw new Error('cleaned.json 형식이 올바르지 않습니다.');
+  }
+  cleanedContourLayer.addData(geo);
+  cleanedContourLoaded = true;
+  return geo;
+}
 
 // OpenSeaMap 해도
 const openSeaMapLayer = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
@@ -717,13 +756,9 @@ const openSeaMapLayer = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x
 
 // 오버레이 레이어 참조 (Eruda 디버그용)
 const overlayLayers = {
-  gebcoContour: gebcoContourLayer,
-  gebcoBathy: gebcoBathymetryLayer,
-  emodnet: emodnetLayer,
+  cleanedContour: cleanedContourLayer,
   openSeaMap: openSeaMapLayer
 };
-
-let depthLegendControl = null;
 
 // 야간모드
 document.getElementById('night').onchange = e =>
@@ -819,9 +854,7 @@ function setupLayerControl(){
     '🛰️ 위성 지도': satelliteWithLabels
   };
   const overlayMaps = {
-    '📏 GEBCO 등심선': gebcoContourLayer,
-    '🎨 GEBCO 수심지도': gebcoBathymetryLayer,
-    '🗺️ EMODnet 수심': emodnetLayer,
+    '📏 등심선 (cleaned.json)': cleanedContourLayer,
     '⚓ 해도 (OpenSeaMap)': openSeaMapLayer
   };
   L.control.layers(baseMaps, overlayMaps, {
@@ -829,26 +862,21 @@ function setupLayerControl(){
     collapsed:true
   }).addTo(map);
 
-  // 등심선/수심지도 켜면 범례 표시
+  if (!depthLegendControl) {
+    depthLegendControl = createDepthLegend();
+  }
+
   map.on('overlayadd', e => {
-    if (e.name.includes('GEBCO') || e.name.includes('EMODnet')) {
-      if (!depthLegendControl) {
-        depthLegendControl = createDepthLegend();
-        depthLegendControl.addTo(map);
-      }
+    if (e.layer === cleanedContourLayer && depthLegendControl && !depthLegendVisible) {
+      depthLegendControl.addTo(map);
+      depthLegendVisible = true;
     }
   });
+
   map.on('overlayremove', e => {
-    if (e.name.includes('GEBCO') || e.name.includes('EMODnet')) {
-      // 다른 수심 레이어가 남아있는지 확인
-      const stillHasDepth = 
-        map.hasLayer(gebcoContourLayer) || 
-        map.hasLayer(gebcoBathymetryLayer) || 
-        map.hasLayer(emodnetLayer);
-      if (!stillHasDepth && depthLegendControl) {
-        map.removeControl(depthLegendControl);
-        depthLegendControl = null;
-      }
+    if (e.layer === cleanedContourLayer && depthLegendControl && depthLegendVisible) {
+      map.removeControl(depthLegendControl);
+      depthLegendVisible = false;
     }
   });
 }
@@ -858,13 +886,15 @@ function createDepthLegend() {
   legend.onAdd = function() {
     const div = L.DomUtil.create('div', 'depth-legend');
     div.innerHTML = `
-      <b>🌊 수심 (m)</b>
-      <span style="color:#a8e0f7">■</span> 0-50<br>
-      <span style="color:#66c2e0">■</span> 50-200<br>
-      <span style="color:#3a91c5">■</span> 200-500<br>
-      <span style="color:#1e5f9c">■</span> 500-1000<br>
-      <span style="color:#0f3f7a">■</span> 1000-2000<br>
-      <span style="color:#052258">■</span> 2000+
+      <b>🌊 cleaned.json 등심선</b>
+      <span style="color:#e53935">■</span> 0~2m<br>
+      <span style="color:#fb8c00">■</span> 2~4m<br>
+      <span style="color:#fdd835">■</span> 4~10m<br>
+      <span style="color:#43a047">■</span> 10~20m<br>
+      <span style="color:#00acc1">■</span> 20~50m<br>
+      <span style="color:#1e88e5">■</span> 50~100m<br>
+      <span style="color:#8e24aa">■</span> 100m+
+      <div style="margin-top:4px;font-size:11px;opacity:0.85;">속성 HSL 값 기준</div>
     `;
     return div;
   };
@@ -1875,7 +1905,30 @@ async function precacheCurrentView(maxZoom = 14){
 /* ======================================================
    20. 시작
 ====================================================== */
-loadAllReefs().then(() => {
+Promise.allSettled([loadAllReefs(), loadCleanedContours()]).then(results => {
+  const [reefResult, contourResult] = results;
+  const list = document.getElementById('layerList');
+
+  if (contourResult.status === 'fulfilled') {
+    cleanedContourLayer.addTo(map);
+    if (depthLegendControl && !depthLegendVisible) {
+      depthLegendControl.addTo(map);
+      depthLegendVisible = true;
+    }
+  }
+
+  if (reefResult.status === 'rejected') {
+    console.error('어초 데이터 로딩 실패:', reefResult.reason);
+    list.innerHTML = `<div style="color:#d97706; font-size:11px;">
+      <b>⚠️ 어초 데이터 로딩 실패</b><br>
+      ${reefResult.reason?.message || reefResult.reason}<br>
+      <button onclick="testGeoJSON()">🔍 진단</button></div>`;
+  }
+
+  if (reefResult.status === 'rejected' && contourResult.status === 'rejected') {
+    throw new Error(`어초/등심선 데이터 모두 로딩 실패: ${contourResult.reason?.message || contourResult.reason}`);
+  }
+
   redrawWaypointLine();
   document.getElementById('splashText').textContent = '준비 완료!';
   hideSplash();
@@ -1890,7 +1943,12 @@ loadAllReefs().then(() => {
 });
 
 async function testGeoJSON(){
-  const paths = ['./geojson/all_reefs.geojson', 'geojson/all_reefs.geojson', '/geojson/all_reefs.geojson'];
+  const paths = [
+    './geojson/cleaned.json',
+    'geojson/cleaned.json',
+    '/geojson/cleaned.json',
+    './geojson/all_reefs.geojson'
+  ];
   let report = '진단:\n\n';
   for (const p of paths){
     try {
